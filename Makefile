@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint format test test-integration status doctor clean \
-	up-lake up down ps logs reset prune trino
+	up-lake up down ps logs reset prune trino extract extract-sample
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -75,4 +75,16 @@ prune: ## Remove GridPulse containers, volumes and images, plus dangling build c
 	@read -p "Remove GridPulse images and data? They will re-download on next 'make up'. [y/N] " ans; [ "$$ans" = y ]
 	$(COMPOSE) --profile '*' down -v --rmi all --remove-orphans
 	docker builder prune -f
+
+# --- Ingestion ---------------------------------------------------------------
+
+# Local data is a sample (plan: ~6 BAs x ~3 months); the full history only runs on AWS.
+SAMPLE_BAS ?= CISO,ERCO,ISNE,MISO,NYIS,PJM
+
+extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data --start 2026-10-01 --end 2026-10-08"
+	$(COMPOSE) run --rm --build extractor $(ARGS)
+
+extract-sample: ## Load region-data for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08
+	$(COMPOSE) run --rm --build extractor eia --route region-data \
+		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
 

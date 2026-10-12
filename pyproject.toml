@@ -8,8 +8,10 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "gridpulse-ingestion",
     "pre-commit",
     "pytest",
+    "respx",
     "trino",
     "ruff",
     "yamllint",
@@ -17,7 +19,10 @@ dev = [
 
 # Component packages (ingestion, semantic, agent, ...) join this workspace as they are built.
 [tool.uv.workspace]
-members = []
+members = ["ingestion"]
+
+[tool.uv.sources]
+gridpulse-ingestion = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -26,7 +31,10 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["gridpulse_ingestion"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "ingestion/tests"]
 addopts = "-q -m 'not integration'"
 markers = ["integration: needs the local stack running (make up-lake)"]

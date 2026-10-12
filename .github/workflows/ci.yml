@@ -20,3 +20,14 @@ jobs:
       - run: uv sync --locked
       - run: make lint
       - run: make test
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build extractor image
+        run: docker buildx build --load -f ingestion/Dockerfile -t gridpulse/ingestion:ci .
+      - name: Smoke test the CLI
+        run: docker run --rm gridpulse/ingestion:ci --help

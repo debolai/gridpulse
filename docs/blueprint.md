@@ -122,7 +122,7 @@ Ingestion re-pulls a rolling window of recent hours on every run and keeps every
 **How a run works.**
 
 1. Airflow passes a route (`region-data`, `fuel-type-data`, `interchange-data`) and a time window to the extractor container.
-2. The extractor requests `frequency=hourly` (UTC), sorts explicitly by `period` then `respondent`, and pages with `offset` and `length=5000` until it has collected the `total` the API reports.
+2. The extractor requests `frequency=hourly` (UTC), sorts explicitly by `period`, `respondent`, then `type` (or the route's equivalent, so the order is total), and pages with `offset` and `length=5000` until it has collected the `total` the API reports.
 3. Each page is validated with a `pydantic` model, then the raw JSON response is written untouched to S3.
 4. Validated rows, plus `_ingested_at`, `_run_id`, and a `_record_hash` of the business fields, are appended to an Iceberg raw table with PyIceberg.
 5. The run writes a small manifest (rows expected, rows received, pages, duration) that later tests read.
@@ -532,3 +532,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-12 — Replaced "replay every missed hour" with a single `catchup_gap` run after downtime.
 - 2026-10-12 — Fixed stale Cube references: evals, the nightly eval DAG, monorepo and image decisions, and Helm charts now point to MetricFlow and the semantic API. Cube remains only as the optional comparison track.
 - 2026-10-12 — Local S3 storage switched from MinIO to SeaweedFS (ADR-0001); MinIO's community images were discontinued.
+- 2026-10-12 — Ingestion: sort adds `type` as a third key (period + respondent alone is not unique); windows are half-open with EIA's inclusive `end` handled in the client; one Iceberg commit per run; locally the extractor runs in a container on the compose network because Lakekeeper vends container-internal endpoints and signs S3 requests remotely.

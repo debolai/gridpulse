@@ -1,0 +1,195 @@
+{
+ "warnings": [
+  {
+   "warning": "incomplete return",
+   "description": "The API can only return 5000 rows in JSON format.  Please consider constraining your request with facet, start, or end, or using offset to paginate results."
+  }
+ ],
+ "response": {
+  "total": "96",
+  "dateFormat": "YYYY-MM-DD\"T\"HH24",
+  "frequency": "hourly",
+  "data": [
+   {
+    "period": "2026-10-01T10",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "D",
+    "type-name": "Demand",
+    "value": "57019",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "DF",
+    "type-name": "Day-ahead demand forecast",
+    "value": "54330",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "NG",
+    "type-name": "Net generation",
+    "value": "57033",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "TI",
+    "type-name": "Total interchange",
+    "value": "16",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "D",
+    "type-name": "Demand",
+    "value": "82676",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "DF",
+    "type-name": "Day-ahead demand forecast",
+    "value": "86794",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "NG",
+    "type-name": "Net generation",
+    "value": "84837",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T10",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "TI",
+    "type-name": "Total interchange",
+    "value": "714",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "D",
+    "type-name": "Demand",
+    "value": "57876",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "DF",
+    "type-name": "Day-ahead demand forecast",
+    "value": "54746",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "NG",
+    "type-name": "Net generation",
+    "value": "57886",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "type": "TI",
+    "type-name": "Total interchange",
+    "value": "11",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "D",
+    "type-name": "Demand",
+    "value": "87572",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "DF",
+    "type-name": "Day-ahead demand forecast",
+    "value": "90933",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "NG",
+    "type-name": "Net generation",
+    "value": "88991",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T11",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "type": "TI",
+    "type-name": "Total interchange",
+    "value": "753",
+    "value-units": "megawatthours"
+   }
+  ],
+  "description": "Hourly demand, day-ahead demand forecast, net generation, and interchange by balancing authority.  \n    Source: Form EIA-930\n    Product: Hourly Electric Grid Monitor"
+ },
+ "request": {
+  "command": "/v2/electricity/rto/region-data/data/",
+  "params": {
+   "frequency": "hourly",
+   "data": [
+    "value"
+   ],
+   "start": "2026-10-01T00",
+   "end": "2026-10-01T11",
+   "sort": [
+    {
+     "column": "period",
+     "direction": "asc"
+    },
+    {
+     "column": "respondent",
+     "direction": "asc"
+    },
+    {
+     "column": "type",
+     "direction": "asc"
+    }
+   ],
+   "facets": {
+    "respondent": [
+     "ERCO",
+     "PJM"
+    ]
+   },
+   "offset": "80",
+   "length": "40"
+  }
+ },
+ "apiVersion": "2.1.14",
+ "ExcelAddInVersion": "2.1.0"
+}

@@ -1,0 +1,12 @@
+# Keep secrets and bulky local state out of every build context.
+.env
+.env.*
+TODO.md
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+.ruff_cache
+local/data
+transform/target
+**/tests

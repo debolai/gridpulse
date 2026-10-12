@@ -4,6 +4,7 @@
 #   lake : Postgres, SeaweedFS (S3), Lakekeeper (Iceberg REST catalog), Trino   ~3 GB
 #   orch : Airflow (added in A6)
 #   app  : semantic API, agent API, Streamlit (added in A4/A5)
+#   tools: one-shot jobs such as the extractor (`make extract`)
 #
 # Every image is pinned by tag + digest. Every long-running service has a memory limit.
 # Credentials below are local-only placeholders, not secrets; real ones live in .env / AWS SSM.
@@ -18,6 +19,8 @@ x-lakekeeper-env: &lakekeeper-env
   LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://gridpulse:gridpulse@postgres:5432/lakekeeper
   LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://gridpulse:gridpulse@postgres:5432/lakekeeper
   RUST_LOG: info
+  # Address clients use for the catalog and its S3 request signer (remote signing).
+  LAKEKEEPER__BASE_URI: http://lakekeeper:8181
 
 services:
   postgres:
@@ -128,6 +131,29 @@ services:
     depends_on:
       lake-init:
         condition: service_completed_successfully
+
+  # One-shot extractor, run via `make extract ...`. Same image as the Airflow/Kubernetes task.
+  extractor:
+    profiles: [tools]
+    build:
+      context: ..
+      dockerfile: ingestion/Dockerfile
+    image: gridpulse/ingestion:local
+    labels: *labels
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      GRIDPULSE_RAW_BUCKET: gridpulse-local-raw
+      GRIDPULSE_S3_ENDPOINT: http://seaweedfs:8333
+      GRIDPULSE_S3_ACCESS_KEY: gridpulse-local
+      GRIDPULSE_S3_SECRET_KEY: gridpulse-local-secret
+      GRIDPULSE_S3_REGION: local-01
+      GRIDPULSE_CATALOG_TYPE: rest
+      GRIDPULSE_CATALOG_URI: http://lakekeeper:8181/catalog
+      GRIDPULSE_CATALOG_WAREHOUSE: gridpulse
+    mem_limit: 1g
+    restart: "no"
 
 volumes:
   postgres-data:

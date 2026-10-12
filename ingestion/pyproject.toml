@@ -1,0 +1,22 @@
+[project]
+name = "gridpulse-ingestion"
+version = "0.1.0"
+description = "EIA and NOAA extractors for GridPulse: paginated, rate-limited, validated, append-only."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx",
+    "tenacity",
+    "pydantic",
+    "pydantic-settings",
+    "pyiceberg[pyarrow,glue,pyiceberg-core,s3fs]",
+]
+
+[project.scripts]
+gridpulse-extract = "gridpulse_ingestion.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gridpulse_ingestion"]
