@@ -17,7 +17,7 @@ Repo: https://github.com/debolai/gridpulse
 4. When TODO #6 lands: A3 `aws` target parity (Terraform foundation first), then the Athena half of the A4 spike
 
 ## Blockers
-- TODO #6 (AWS credentials: none configured on this Mac yet) blocks the A3 `aws` target and A6.
+- TODO #9 (budget-alert email) blocks the first Terraform apply (foundation), and so the A3 `aws` target. AWS profile `gridpulse` is ready (TODO #6 done 2026-10-12).
 
 ## Phase A — MVP slice
 - [x] **A0 Foundations** — 2026-10-12 — done when `make lint test` passes locally and in GitHub Actions
@@ -65,3 +65,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — A1 complete: local lake (SeaweedFS + Lakekeeper + Trino) up from scratch in ~13 s; Iceberg round-trip test passes. MinIO images discontinued → SeaweedFS (ADR-0001). Next: A2.
 - 2026-10-12 — A2 complete: region-data extractor (container), 1 week × 6 BAs loaded locally, rerun idempotent. Next: A3 dbt slice.
 - 2026-10-12 — A3 local half complete: dbt project (Trino + Athena targets), EIA-sourced BA seed, staging → latest values → dim/fct with contracts; incremental proven equal to full rebuild. Next: A4 spike on Trino.
+- 2026-10-12 — TODO #6 done: AWS account with IAM Identity Center admin, SSO profile `gridpulse` (us-east-1), root MFA on. Waiting on budget email (#9).
