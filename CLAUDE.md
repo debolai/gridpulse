@@ -21,7 +21,7 @@ Spec for coding assistants. The design lives in `docs/blueprint.md`; progress li
 
 ## Conventions
 - Python 3.12, `uv` workspace, `ruff` (line length 100). Pin every version: `uv.lock`, Helm chart versions, Terraform providers, image tag + digest.
-- Two runtimes, same code: `local` (MinIO + Lakekeeper Iceberg REST + Trino) and `aws` (S3 + Glue + Athena v3). Engine differences go in dbt `adapter.dispatch` macros or config, never in forks of the code.
+- Two runtimes, same code: `local` (SeaweedFS S3 + Lakekeeper Iceberg REST + Trino) and `aws` (S3 + Glue + Athena v3). Engine differences go in dbt `adapter.dispatch` macros or config, never in forks of the code.
 - dbt: prefixes `stg_`, `int_`, `dim_`, `fct_`, `snap_`; snake_case; units in names (`demand_mwh`); timestamps `_utc` / `_local`; contracts on every mart.
 - Domain rules: store UTC, derive local time from the BA seed; interchange is positive for exports (`net_imports` flips the sign); ratios are ratios of sums; flag bad values, never delete them.
 - The agent produces metric requests, never SQL.

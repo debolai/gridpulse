@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "gridpulse-local",
+      "credentials": [
+        {
+          "accessKey": "gridpulse-local",
+          "secretKey": "gridpulse-local-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}

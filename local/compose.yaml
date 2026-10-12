@@ -1,0 +1,136 @@
+# GridPulse local stack. Run through the Makefile (`make up-lake`, `make down`, ...), not directly.
+#
+# Profiles keep memory down: start only what the task needs.
+#   lake : Postgres, SeaweedFS (S3), Lakekeeper (Iceberg REST catalog), Trino   ~3 GB
+#   orch : Airflow (added in A6)
+#   app  : semantic API, agent API, Streamlit (added in A4/A5)
+#
+# Every image is pinned by tag + digest. Every long-running service has a memory limit.
+# Credentials below are local-only placeholders, not secrets; real ones live in .env / AWS SSM.
+
+name: gridpulse
+
+x-labels: &labels
+  com.gridpulse.project: gridpulse
+
+x-lakekeeper-env: &lakekeeper-env
+  LAKEKEEPER__PG_ENCRYPTION_KEY: local-dev-only-not-a-secret
+  LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://gridpulse:gridpulse@postgres:5432/lakekeeper
+  LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://gridpulse:gridpulse@postgres:5432/lakekeeper
+  RUST_LOG: info
+
+services:
+  postgres:
+    profiles: [lake, orch, app]
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    labels: *labels
+    environment:
+      POSTGRES_USER: gridpulse
+      POSTGRES_PASSWORD: gridpulse
+      POSTGRES_DB: gridpulse
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gridpulse -d gridpulse"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  seaweedfs:
+    profiles: [lake, orch, app]
+    image: chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+    labels: *labels
+    # `mini` = single-process dev mode (master + volume + filer + S3 gateway).
+    # Buckets mirror the AWS layout: raw (API responses) and lake (Iceberg tables).
+    command:
+      - mini
+      - -dir=/data
+      - -bucket=gridpulse-local-raw,gridpulse-local-lake
+      - -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs-data:/data
+      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    ports:
+      - "8333:8333"
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8333/status"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  lakekeeper-migrate:
+    profiles: [lake, orch, app]
+    image: quay.io/lakekeeper/catalog:v0.13.6@sha256:d6829722cac0d00dfc5665b0955766387b93ccadd8b1e70e679b49619bc30ea5
+    labels: *labels
+    environment: *lakekeeper-env
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  lakekeeper:
+    profiles: [lake, orch, app]
+    image: quay.io/lakekeeper/catalog:v0.13.6@sha256:d6829722cac0d00dfc5665b0955766387b93ccadd8b1e70e679b49619bc30ea5
+    labels: *labels
+    environment: *lakekeeper-env
+    command: ["serve"]
+    ports:
+      - "8181:8181"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 3s
+    depends_on:
+      lakekeeper-migrate:
+        condition: service_completed_successfully
+
+  # One-shot: accept terms, create the `gridpulse` warehouse. Safe to rerun.
+  lake-init:
+    profiles: [lake, orch, app]
+    image: curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+    labels: *labels
+    entrypoint: ["/bin/sh", "/init/init.sh"]
+    volumes:
+      - ./lake:/init:ro
+    restart: "no"
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+
+  trino:
+    profiles: [lake, orch, app]
+    image: trinodb/trino:483@sha256:db58cc93e593a2706553745f276bb119c9810e69918be56ecde088ba7ccb0534
+    labels: *labels
+    # The image sizes the JVM heap at 80% of the container limit (~2 GB here).
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+    ports:
+      - "8080:8080"
+    mem_limit: 2560m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/v1/info | grep -q '\"starting\":false'"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+    depends_on:
+      lake-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+    labels: *labels
+  seaweedfs-data:
+    labels: *labels

@@ -77,7 +77,7 @@ The platform runs fully offline on a laptop and on AWS from the same code, and t
 
 | Piece | Local (`local` target) | AWS (`aws` target) |
 | --- | --- | --- |
-| Object storage | MinIO | Amazon S3 |
+| Object storage | SeaweedFS (S3-compatible; see ADR-0001) | Amazon S3 |
 | Iceberg catalog | Lakekeeper (Iceberg REST, Postgres-backed) | AWS Glue Data Catalog |
 | Query engine | Trino | Amazon Athena v3 (Trino-based) |
 | dbt adapter | `dbt-trino` | `dbt-athena` |
@@ -85,7 +85,7 @@ The platform runs fully offline on a laptop and on AWS from the same code, and t
 | Postgres | Container | RDS |
 | LLM | Claude on Bedrock via local AWS credentials | Claude on Bedrock via Pod Identity |
 
-**Decision: fully offline local mode on Trino.** Why: reviewers can run `make up` with no AWS account, CI can test dbt and the semantic layer for free in service containers, and the dev loop avoids Athena's per-query startup time. Athena v3 is built on Trino, so SQL carries over; the few differences (merge and table properties, `OPTIMIZE`/`VACUUM`) live in `adapter.dispatch` macros. MetricFlow officially supports Trino, so this also serves as the ready fallback for the Athena-compatibility risk. Trade-off: two dbt targets to keep in step, so CI also builds against Athena.
+**Decision: fully offline local mode on Trino.** Local object storage is SeaweedFS, because MinIO no longer publishes community images (ADR-0001). Why: reviewers can run `make up` with no AWS account, CI can test dbt and the semantic layer for free in service containers, and the dev loop avoids Athena's per-query startup time. Athena v3 is built on Trino, so SQL carries over; the few differences (merge and table properties, `OPTIMIZE`/`VACUUM`) live in `adapter.dispatch` macros. MetricFlow officially supports Trino, so this also serves as the ready fallback for the Athena-compatibility risk. Trade-off: two dbt targets to keep in step, so CI also builds against Athena.
 
 **Decision: split Terraform into a persistent foundation and ephemeral compute.** Why: the foundation (state bucket, lake buckets, Glue, Athena workgroups, ECR, IAM, GitHub OIDC, SSM, budgets) costs a few dollars a month and holds the data, so it stays up. Compute (VPC with NAT, EKS, Spot nodes, RDS, Helm releases) is created by `make aws-up` (about 20–25 minutes, restoring RDS from its latest snapshot, then running the smoke test) and removed by `make aws-down` (final RDS snapshot, destroy, then a tagging-API check that fails if any `gridpulse:ephemeral` resource remains).
 
@@ -527,7 +527,8 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 
 ## Changelog
 
-- 2026-10-12 — Added *Local and cloud runtime*: fully offline local mode (MinIO, Lakekeeper, Trino), foundation/compute Terraform split with `make aws-up`/`aws-down`, and laptop memory and cleanup rules.
+- 2026-10-12 — Added *Local and cloud runtime*: fully offline local mode (Lakekeeper, Trino, and S3-compatible storage), foundation/compute Terraform split with `make aws-up`/`aws-down`, and laptop memory and cleanup rules.
 - 2026-10-12 — Reordered the build into an MVP slice (Phase A) and depth phases (Phase B); progress tracked in `docs/STATUS.md`.
 - 2026-10-12 — Replaced "replay every missed hour" with a single `catchup_gap` run after downtime.
 - 2026-10-12 — Fixed stale Cube references: evals, the nightly eval DAG, monorepo and image decisions, and Helm charts now point to MetricFlow and the semantic API. Cube remains only as the optional comparison track.
+- 2026-10-12 — Local S3 storage switched from MinIO to SeaweedFS (ADR-0001); MinIO's community images were discontinued.
