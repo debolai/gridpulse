@@ -5,26 +5,26 @@ A step is ticked only with the date and the evidence (command/output) that prove
 Human-only tasks live in the git-ignored `TODO.md` and are referenced here as `TODO #N`.
 
 Last updated: 2026-10-12
+Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A0 — Foundations (almost done; CI-in-Actions check waits on TODO #5)
+- Phase A1 — Local lake (MinIO + Lakekeeper + Trino in Docker Compose)
 
 ## Next up
-1. A0: push to GitHub and confirm CI passes (blocked on TODO #5)
-2. A1: `local/compose.yaml` with profiles `lake`, `orch`, `app`, memory limits, `make up-*`/`down`/`reset`/`prune`
-3. A1: MinIO + Lakekeeper + Trino bootstrap; prove create/read of an Iceberg table
-4. A2: `region-data` extractor (needs EIA key — TODO #4)
+1. A1: `local/compose.yaml` with profiles `lake`, `orch`, `app`, memory limits, `make up-*`/`down`/`reset`/`prune`
+2. A1: MinIO + Lakekeeper + Trino bootstrap; prove create/read of an Iceberg table
+3. A2: `region-data` extractor (needs EIA key — TODO #4)
 
 ## Blockers
 - TODO #4 (EIA API key) blocks A2 live pulls. Fixture-based work can proceed.
-- TODO #5 (GitHub repo) blocks the A0 CI check.
+- TODO #6 (AWS credentials: none configured on this Mac yet) blocks the A3 `aws` target and A6.
 
 ## Phase A — MVP slice
-- [ ] **A0 Foundations** — done when `make lint test` passes locally and in GitHub Actions
+- [x] **A0 Foundations** — 2026-10-12 — done when `make lint test` passes locally and in GitHub Actions
   - [x] git init, `.gitignore` (TODO.md, .env), uv workspace, ruff, yamllint, pre-commit, Makefile — 2026-10-12
   - [x] Blueprint moved to `docs/blueprint.md` with changelog; STATUS.md, TODO.md, ADR template, CLAUDE.md — 2026-10-12
   - [x] `make lint test` passes locally — 2026-10-12
-  - [ ] CI passes in GitHub Actions
+  - [x] CI passes in GitHub Actions — 2026-10-12 — https://github.com/debolai/gridpulse/actions/runs/38279302910 (commit 0dbf97b)
 - [ ] **A1 Local lake** — done when Trino creates/reads an Iceberg table in MinIO and `make reset && make up-lake` works from scratch
 - [ ] **A2 region-data extractor** — done when a rerun adds no new distinct rows and the completeness assert passes
 - [ ] **A3 dbt slice** — done when `dbt build` passes on `local` and `aws` targets with equal row counts for a fixed window
@@ -47,3 +47,4 @@ Last updated: 2026-10-12
 
 ## Session log
 - 2026-10-12 — Plan agreed (offline local mode, MVP first). A0 scaffolding created; lint and tests pass locally. Next: GitHub repo, then A1.
+- 2026-10-12 — TODO #1, #2, #3, #5 done (#6 still open: no AWS credentials found). Pushed to GitHub; CI green. A0 complete. Next: A1.
