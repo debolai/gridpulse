@@ -2,7 +2,7 @@
 #
 # Profiles keep memory down: start only what the task needs.
 #   lake : Postgres, SeaweedFS (S3), Lakekeeper (Iceberg REST catalog), Trino   ~3 GB
-#   orch : Airflow (added in A6)
+#   orch : lake + Airflow (scheduler, API/UI on http://localhost:8088)  +2 GB
 #   app  : semantic API, agent API, Streamlit (added in A4/A5)
 #   tools: one-shot jobs such as the extractor (`make extract`)
 #
@@ -60,8 +60,14 @@ services:
     ports:
       - "8333:8333"
     mem_limit: 768m
+    # Healthy only once signed S3 requests are accepted: /status answers before the access keys
+    # are loaded, and early writes then fail with Access Denied (seen on the first Airflow run).
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8333/status"]
+      test:
+        - CMD-SHELL
+        - >-
+          curl -sf --aws-sigv4 "aws:amz:local-01:s3" --user gridpulse-local:gridpulse-local-secret
+          "http://localhost:8333/gridpulse-local-lake?list-type=2&max-keys=1" >/dev/null
       interval: 2s
       timeout: 5s
       retries: 30
@@ -75,8 +81,8 @@ services:
     command: ["migrate"]
     restart: "no"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
 
   lakekeeper:
     profiles: [lake, orch, app]
@@ -129,6 +135,75 @@ services:
       retries: 40
       start_period: 10s
     depends_on:
+      lake-init:
+        condition: service_completed_successfully
+
+  # Creates per-consumer databases on the shared Postgres. Idempotent (init.sql only runs on an
+  # empty volume, so databases added later need this).
+  postgres-init:
+    profiles: [lake, orch, app]
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    labels: *labels
+    environment:
+      PGPASSWORD: gridpulse
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for db in lakekeeper airflow; do
+          psql -h postgres -U gridpulse -d gridpulse -tc "SELECT 1 FROM pg_database WHERE datname='$$db'" \
+            | grep -q 1 || psql -h postgres -U gridpulse -d gridpulse -c "CREATE DATABASE $$db"
+        done
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Airflow 3 in one container (`airflow standalone`: api-server, scheduler, dag-processor,
+  # triggerer) with LocalExecutor. Tasks run as sibling containers through the Docker socket.
+  # Full Helm deployment with KubernetesExecutor comes in phase B2.
+  airflow:
+    profiles: [orch]
+    build:
+      context: ..
+      dockerfile: orchestration/Dockerfile
+    image: gridpulse/orchestration:local
+    labels: *labels
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://gridpulse:gridpulse@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+      # Local only: no login screen. The EKS deployment uses real auth.
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      GRIDPULSE_DOCKER_NETWORK: gridpulse_default
+      GRIDPULSE_SEMANTIC_API_URL: http://semantic-api:8090
+    command:
+      - bash
+      - -c
+      - |
+        export AIRFLOW_VAR_EIA_API_KEY="$${EIA_API_KEY:-}"
+        airflow db migrate >/dev/null &&
+        airflow pools set eia_api 2 "EIA API: at most 2 concurrent extract tasks" >/dev/null &&
+        exec airflow standalone
+    volumes:
+      - ../orchestration/dags:/opt/airflow/dags
+      - ../orchestration/tests:/opt/airflow/tests
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8088:8080"
+    mem_limit: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v2/monitor/health | grep -q healthy"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
       lake-init:
         condition: service_completed_successfully
 

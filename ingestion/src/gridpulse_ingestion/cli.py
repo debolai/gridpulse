@@ -4,13 +4,13 @@ import argparse
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import ROUTES
 from gridpulse_ingestion.ratelimit import TokenBucket
-from gridpulse_ingestion.run import extract
+from gridpulse_ingestion.run import extract, resolve_auto_start
 from gridpulse_ingestion.storage import IcebergSink, RawStore
 
 
@@ -29,13 +29,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="source", required=True)
     eia = sub.add_parser("eia", help="extract one EIA route for a UTC window [start, end)")
     eia.add_argument("--route", choices=sorted(ROUTES), required=True)
-    eia.add_argument("--start", type=_utc_hour, required=True, help="inclusive, UTC")
+    eia.add_argument(
+        "--start",
+        required=True,
+        help="inclusive, UTC; or 'auto': last --lookback-hours, reaching back to the last "
+        "successful load after downtime (at most --max-gap-days)",
+    )
     eia.add_argument("--end", type=_utc_hour, required=True, help="exclusive, UTC")
     eia.add_argument(
         "--respondents",
         default="",
         help="comma-separated BA codes (default: all balancing authorities)",
     )
+    eia.add_argument("--lookback-hours", type=int, default=72)
+    eia.add_argument("--max-gap-days", type=int, default=30)
     return parser.parse_args(argv)
 
 
@@ -56,12 +63,24 @@ def main(argv: list[str] | None = None) -> int:
         max_attempts=settings.eia_max_attempts,
         timeout_seconds=settings.eia_timeout_seconds,
     )
+    raw_store = RawStore.from_settings(settings)
+    if args.start == "auto":
+        start, warning = resolve_auto_start(
+            args.end,
+            raw_store.get_watermark(route.name, facets),
+            timedelta(hours=args.lookback_hours),
+            timedelta(days=args.max_gap_days),
+        )
+        if warning:
+            logging.getLogger("gridpulse.extract").warning(warning)
+    else:
+        start = _utc_hour(args.start)
     manifest = extract(
         route,
-        args.start,
+        start,
         args.end,
         client=client,
-        raw_store=RawStore.from_settings(settings),
+        raw_store=raw_store,
         sink=IcebergSink.from_settings(settings),
         facets=facets,
     )

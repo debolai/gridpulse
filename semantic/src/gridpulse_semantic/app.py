@@ -4,6 +4,7 @@ GET  /health     liveness + which engine/target and data version
 GET  /metrics    the metric catalog (?agent_only=true for the agent's allow-list)
 POST /compile    MetricRequest -> SQL (no execution)
 POST /query      MetricRequest -> rows, the SQL that produced them, cache info
+POST /cache/refresh   pipeline hook after each dbt build: drops cached results
 """
 
 import os
@@ -61,6 +62,12 @@ def _known(req: MetricRequest) -> None:
 def health() -> dict:
     e = engine()
     return {"status": "ok", "target": e.target, "data_version": e.data_version()}
+
+
+@app.post("/cache/refresh")
+def refresh_cache() -> dict:
+    """Pipeline hook: new data landed, so cached results are stale."""
+    return {"data_version": engine().refresh()}
 
 
 @app.get("/metrics")

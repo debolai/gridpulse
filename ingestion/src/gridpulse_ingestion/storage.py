@@ -72,6 +72,32 @@ class RawStore:
             ContentEncoding="gzip",
         )
 
+    @staticmethod
+    def watermark_key(route: str, facets: Sequence[str]) -> str:
+        scope = ",".join(sorted(facets)) or "all"
+        return f"_state/route={route}/facets={scope}/watermark.json"
+
+    def get_watermark(self, route: str, facets: Sequence[str]) -> datetime | None:
+        """End of the latest window loaded successfully for this route and BA set, or None."""
+        try:
+            obj = self._s3.get_object(Bucket=self.bucket, Key=self.watermark_key(route, facets))
+        except self._s3.exceptions.NoSuchKey:
+            return None
+        return datetime.fromisoformat(json.loads(obj["Body"].read())["loaded_through_utc"])
+
+    def advance_watermark(self, route: str, facets: Sequence[str], window_end: datetime) -> None:
+        """Move the watermark forward only (a backfill of old hours never moves it back)."""
+        current = self.get_watermark(route, facets)
+        if current is not None and current >= window_end:
+            return
+        body = json.dumps({"loaded_through_utc": window_end.isoformat()}).encode()
+        self._s3.put_object(
+            Bucket=self.bucket,
+            Key=self.watermark_key(route, facets),
+            Body=body,
+            ContentType="application/json",
+        )
+
     def put_manifest(self, key: str, manifest: dict) -> None:
         body = json.dumps(manifest, indent=2, sort_keys=True, default=str).encode()
         self._s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType="application/json")

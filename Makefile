@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint format test test-integration status doctor clean \
-	up-lake up down ps logs reset prune trino extract extract-sample \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	semantic-manifest semantic-api mf bedrock-check agent-api agent-ui agent-eval
@@ -54,7 +54,19 @@ up-lake: ## Start the lake: Postgres, SeaweedFS (S3), Lakekeeper, Trino (~3 GB)
 	$(COMPOSE) --profile lake up -d --wait
 	@echo "Trino: http://localhost:8080   Lakekeeper UI: http://localhost:8181/ui   S3: http://localhost:8333"
 
-up: up-lake ## Start everything built so far (orch/app profiles join in A4-A6)
+up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 GB
+	$(COMPOSE) --profile lake --profile orch up -d --wait
+	@echo "Airflow: http://localhost:8088   Trino: http://localhost:8080"
+
+up: up-orch ## Start everything built so far
+
+images: ## Build the local task images Airflow launches (extractor, dbt)
+	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
+	docker build -q -f transform/Dockerfile -t gridpulse/transform:local . >/dev/null
+	@echo "built gridpulse/ingestion:local gridpulse/transform:local"
+
+dag-check: ## DAG integrity: imports, no catchup, retries, timeouts, EIA pool
+	$(COMPOSE) --profile orch run --rm --no-deps --entrypoint python airflow /opt/airflow/tests/dag_integrity.py
 
 down: ## Stop all containers, keep data
 	$(COMPOSE) --profile '*' down

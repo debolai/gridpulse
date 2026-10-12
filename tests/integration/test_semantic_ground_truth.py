@@ -147,3 +147,11 @@ def test_catalog_exposes_agent_allow_list(api):
     agent = {m["name"] for m in api.get("/metrics", params={"agent_only": True}).json()}
     assert {"demand", "peak_demand", "forecast_error_mape", "data_completeness"} <= agent
     assert "expected_hours" not in agent  # building blocks stay hidden from the agent
+
+
+def test_cache_refresh_invalidates_results(api):
+    body = {"metrics": ["demand"], "start": START.isoformat(), "end": END.isoformat()}
+    api.post("/query", json=body)
+    version = api.post("/cache/refresh").json()["data_version"]
+    after = api.post("/query", json=body).json()
+    assert after["cached"] is False and after["data_version"] == version

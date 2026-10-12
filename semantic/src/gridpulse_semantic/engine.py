@@ -7,7 +7,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -68,6 +68,7 @@ class SemanticEngine:
         self._mf = config.mf
         self._lock = threading.Lock()  # MetricFlow's engine and dbt adapter aren't thread-safe
         self._cache = _Cache()
+        self._refreshed_at: str | None = None
         self.target = os.environ.get("DBT_TARGET", "local")
         metrics = self._mf.list_metrics(include_dimensions=True)
         self.entity_names = {
@@ -93,8 +94,17 @@ class SemanticEngine:
     def catalog(self, agent_only: bool = False) -> list[dict]:
         return [m for m in self._catalog if m["agent"] or not agent_only]
 
+    def refresh(self) -> str:
+        """Called by the pipeline after each dbt build: drop cached results, new data version."""
+        self._cache = _Cache()
+        self._refreshed_at = datetime.now(UTC).isoformat(timespec="seconds")
+        return self.data_version()
+
     def data_version(self) -> str:
-        """The dbt run that last built the marts; changes whenever new data lands."""
+        """Changes whenever new data lands: the last refresh from the pipeline, else the dbt
+        invocation in target/run_results.json (when dbt runs next to the API, as locally)."""
+        if self._refreshed_at:
+            return f"refresh:{self._refreshed_at}"
         run_results = self._project_dir / "target" / "run_results.json"
         try:
             meta = json.loads(run_results.read_text())["metadata"]

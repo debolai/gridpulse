@@ -37,6 +37,17 @@ class FakeRawStore:
     def put_manifest(self, key: str, manifest: dict) -> None:
         self.manifests[key] = dict(manifest)
 
+    watermarks: dict
+
+    def get_watermark(self, route, facets):
+        return getattr(self, "watermarks", {}).get((route, tuple(sorted(facets))))
+
+    def advance_watermark(self, route, facets, window_end):
+        self.watermarks = getattr(self, "watermarks", {})
+        key = (route, tuple(sorted(facets)))
+        if key not in self.watermarks or self.watermarks[key] < window_end:
+            self.watermarks[key] = window_end
+
 
 class FakeSink:
     def __init__(self) -> None:

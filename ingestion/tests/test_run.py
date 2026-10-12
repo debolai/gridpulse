@@ -169,3 +169,58 @@ def test_raw_store_gzip_is_deterministic():
     store.put_page("k", b'{"a": 1}')
     assert s3.bodies[0] == s3.bodies[1]
     assert gzip.decompress(s3.bodies[0]) == b'{"a": 1}'
+
+
+def test_watermark_moves_forward_only_on_success(region_pages, raw_store, sink):
+    run(region_pages, raw_store, sink)
+    assert raw_store.get_watermark("region-data", ["ERCO", "PJM"]) == END
+    broken = json.loads(json.dumps(region_pages))
+    del broken[0]["response"]["data"][0]["respondent"]
+    later_end = datetime(2026, 10, 2, 0, tzinfo=UTC)
+    with pytest.raises(RecordValidationError):
+        extract(
+            REGION_DATA,
+            START,
+            later_end,
+            client=ReplayClient(broken),
+            raw_store=raw_store,
+            sink=sink,
+            facets=("ERCO", "PJM"),
+            now=lambda: NOW,
+        )
+    assert raw_store.get_watermark("region-data", ["ERCO", "PJM"]) == END  # failure: unchanged
+
+
+def test_auto_start_normal_run_rereads_the_lookback():
+    from datetime import timedelta
+
+    from gridpulse_ingestion.run import resolve_auto_start
+
+    end = datetime(2026, 10, 12, 10, tzinfo=UTC)
+    start, warning = resolve_auto_start(
+        end, end - timedelta(hours=1), timedelta(hours=72), timedelta(days=30)
+    )
+    assert start == end - timedelta(hours=72) and warning is None
+
+
+def test_auto_start_fills_a_gap_after_downtime():
+    from datetime import timedelta
+
+    from gridpulse_ingestion.run import resolve_auto_start
+
+    end = datetime(2026, 10, 12, 10, tzinfo=UTC)
+    watermark = end - timedelta(days=9)
+    start, warning = resolve_auto_start(end, watermark, timedelta(hours=72), timedelta(days=30))
+    assert start == watermark and warning is None
+
+
+def test_auto_start_caps_long_gaps_and_warns():
+    from datetime import timedelta
+
+    from gridpulse_ingestion.run import resolve_auto_start
+
+    end = datetime(2026, 10, 12, 10, tzinfo=UTC)
+    start, warning = resolve_auto_start(
+        end, end - timedelta(days=90), timedelta(hours=72), timedelta(days=30)
+    )
+    assert start == end - timedelta(days=30) and "Backfill" in warning

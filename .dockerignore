@@ -9,4 +9,11 @@ TODO.md
 .ruff_cache
 local/data
 transform/target
-**/tests
+# Python test suites (not transform/tests, which holds dbt singular tests)
+tests
+ingestion/tests
+semantic/tests
+agent/tests
+transform/logs
+transform/dbt_packages
+transform/.user.yml

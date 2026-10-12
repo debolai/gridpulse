@@ -9,13 +9,37 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
 
 from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import Route
 from gridpulse_ingestion.storage import IcebergSink, RawStore, ingest_date
+
+
+def resolve_auto_start(
+    end: datetime,
+    watermark: datetime | None,
+    lookback: timedelta,
+    max_gap: timedelta,
+) -> tuple[datetime, str | None]:
+    """Start of an `--start auto` window, and a warning if part of a gap is left behind.
+
+    Normally `end - lookback` (re-reading recent hours catches revisions). After downtime the
+    window reaches back to the watermark so the gap is filled in one run, never more than
+    `max_gap`: older gaps need an explicit backfill (chunked, through the API pool).
+    """
+    start = end - lookback
+    if watermark is not None and watermark < start:
+        start = watermark
+    floor = end - max_gap
+    if start < floor:
+        return floor, (
+            f"gap since {watermark.isoformat() if watermark else 'never'} is longer than "
+            f"{max_gap}; loading from {floor.isoformat()} only. Backfill the rest explicitly."
+        )
+    return start, None
 
 
 class RecordValidationError(RuntimeError):
@@ -103,6 +127,7 @@ def extract(
             manifest["rows_received"] = len(records)
         manifest["unknown_fields"] = sorted(unknown)
         manifest["rows_appended"] = sink.append(route, records)
+        raw_store.advance_watermark(route.name, facets, end)
         manifest["status"] = "succeeded"
     except Exception as exc:
         manifest.update(status="failed", error=f"{type(exc).__name__}: {exc}"[:2000])

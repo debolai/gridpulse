@@ -8,12 +8,12 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A5 — Minimal agent: offline parts built and tested; live evaluation waits on TODO #7 (Anthropic use-case form in Bedrock)
+- Phase A6b — AWS demo deployment: images for semantic API and agent, Terraform compute, `make aws-up` / `make aws-down`. (A5 live eval still waits on TODO #7.)
 
 ## Next up
 1. When TODO #7 lands: `make bedrock-check`, then `make agent-eval` (target ≥ 90%), tune prompts if needed, and a live smoke test through `make agent-api` + `make agent-ui`
-2. A6: minimal Airflow (LocalExecutor) running eia_hourly → dbt build → cache refresh, plus catchup_gap
-3. A6: container images for semantic API and agent; Terraform compute (VPC, EKS, RDS, ECR, IAM, OIDC); `make aws-up` / `make aws-down`
+2. A6b: container images for semantic API and agent (plus the existing extractor and dbt images) pushed to ECR
+3. A6b: Terraform compute (VPC + NAT, EKS with Spot nodes and Pod Identity, RDS, ECR, workload IAM roles, GitHub OIDC); Kubernetes manifests; `make aws-up` / `make aws-down` with a smoke test and leftover-resource check
 
 ## Blockers
 - TODO #7 (Anthropic use-case form in Bedrock) blocks live LLM calls: `make bedrock-check` shows 4.x models need the form; 5.x models are not yet enabled for this new account.
@@ -42,6 +42,8 @@ Repo: https://github.com/debolai/gridpulse
   - [x] Offline build — 2026-10-12: LangGraph graph (route → plan → validate → execute → answer → ground-check, ≤2 replans on validator/API errors), provider switch (bedrock | anthropic | ollama), FastAPI `/ask` with optional bearer token, Streamlit UI, 17-case golden set + scorer, contract test against the semantic API. 30 agent unit tests (74 total) pass.
   - [ ] Eval accuracy ≥ 90% — blocked on TODO #7.
 - [ ] **A6 Scheduling + AWS** — done when `make aws-down && make aws-up` restores a demo that answers the smoke question
+  - [x] A6a local scheduling — 2026-10-12. Airflow 3.3.2 (`make up-orch`, UI http://localhost:8088): `eia_hourly` (cron :15, catchup=False, eia_api pool, one extract at a time) publishes the raw_eia asset → `dbt_build` (asset-triggered dbt container) → semantic cache refresh. Evidence: from `make reset`, stack up in 19 s, triggered run succeeded, dbt_build asset-triggered and succeeded, marts populated (432 rows = 6 BAs × 72 h). Catch-up: watermark wound back to Oct 7 → one run loaded Oct 7 → Oct 12 (3,190 rows) and advanced the watermark. `make dag-check` OK.
+  - [ ] A6b AWS demo deployment
 - [ ] **MVP checkpoint** — README MVP section, demo GIF, "still to come" list
 
 ## Phase B — Depth
@@ -57,6 +59,9 @@ Repo: https://github.com/debolai/gridpulse
 - (empty — park scope creep here instead of starting it)
 
 ## Findings to fold into the build
+- 2026-10-12: Lakekeeper remote signing caused intermittent "Access Denied" on Iceberg writes under concurrency; disabled for the local warehouse (clients write with their own S3 credentials, like IAM roles on AWS). Three concurrent writers then all succeeded.
+- 2026-10-12: Airflow 3: manual runs have no data interval (`data_interval_end` is undefined, not None); DAGs anchor on `dag_run.run_after`. Marking a run failed doesn't stop a running task, so extracts set `max_active_tis_per_dag=1`.
+- 2026-10-12: SeaweedFS reports healthy before its access keys load; the health check now makes a signed S3 request.
 - 2026-10-12: MetricFlow gotchas (ADR-0002): time bounds snap to query grain (API uses typed half-open metric_time filters instead); cumulative `period_agg` defaults to `first`; partial parsing keeps stale metrics (`make semantic-manifest` does a full parse); dimensions are entity-scoped (`grid_hour__hour_local`).
 - 2026-10-12: AWS SSO: boto3 can reject an SSO token the cache still lists as valid, while the CLI keeps working from cached role credentials. Workaround: `aws configure export-credentials`; fix: `aws sso login`.
 - 2026-10-12: Athena casts a zoned timestamp to `timestamp` by converting to UTC (Trino keeps the wall clock). Local times would silently have equalled UTC; the DST unit test caught it. `athena__utc_to_local` formats then parses instead.
@@ -79,3 +84,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — A3 complete: AWS foundation applied (buckets, Glue, Athena workgroups, $50 budget); sample loaded via Glue; dbt builds on Athena with identical results to Trino. Next: A4 MetricFlow spike on both engines.
 - 2026-10-12 — A4 complete: MetricFlow spike passed on Trino and Athena (ADR-0002); 6 governed metrics; semantic API with SQL ground-truth tests. Next: A5 agent.
 - 2026-10-12 — A5 offline parts complete (graph, validator, ground-check, API, UI, golden set); live eval waits on the Bedrock use-case form (TODO #7). Next: A6 while waiting.
+- 2026-10-12 — A6a complete: Airflow 3 local scheduling with asset-driven dbt and gap catch-up via the extractor watermark; fixed remote-signing write failures. Next: A6b AWS deployment (plan first).

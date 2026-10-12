@@ -19,6 +19,7 @@ make up-lake           # local lake: Trino at http://localhost:8080, catalog UI 
 make test-integration  # prove Trino can write and read Iceberg tables, and reruns are idempotent
 make extract-sample START=2026-10-01 END=2026-10-08   # load a week of EIA data for 6 sample BAs (needs EIA_API_KEY in .env)
 make dbt-build         # build and test the dbt models (staging → intermediate → marts) on the local lake
+make up-orch           # lake + Airflow 3 (http://localhost:8088): hourly extract → dbt build → cache refresh
 make dbt-docs          # browse model docs and lineage at http://localhost:8081
 make semantic-api      # governed metrics over HTTP: http://localhost:8090/docs
 make mf ARGS="query --metrics demand --group-by balancing_authority"   # MetricFlow CLI
