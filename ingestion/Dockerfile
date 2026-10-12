@@ -9,8 +9,11 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 
 # Dependencies first, so code changes don't reinstall them.
+# uv reads every workspace member's pyproject.toml to use the shared lockfile, so all of them
+# are copied (manifests only; just this component's source is copied below).
 COPY pyproject.toml uv.lock README.md ./
 COPY ingestion/pyproject.toml ingestion/pyproject.toml
+COPY semantic/pyproject.toml semantic/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --package gridpulse-ingestion --no-install-workspace
 
