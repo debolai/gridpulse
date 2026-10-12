@@ -65,7 +65,9 @@ localized as (
 
 select
     cast(ba_code as varchar) as ba_code,
-    period_utc,
+    -- Explicit casts pin the engine's timestamp type (see timestamp_type()), including when
+    -- dbt unit tests feed this model fixtures typed from the upstream Iceberg table.
+    cast(period_utc as {{ timestamp_type() }}) as period_utc,
     period_local,
     cast(period_local as date) as date_local,
     cast(hour(period_local) as integer) as hour_local,
@@ -74,5 +76,5 @@ select
     demand_forecast_mwh,
     net_generation_mwh,
     total_interchange_mwh,
-    last_ingested_at_utc
+    cast(last_ingested_at_utc as {{ timestamp_type() }}) as last_ingested_at_utc
 from localized

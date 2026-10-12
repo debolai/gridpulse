@@ -29,6 +29,8 @@ seeds:
 
 models:
   gridpulse:
+    # Athena: every table is Iceberg (Trino's catalog is Iceberg-only, so it ignores this).
+    +table_type: iceberg
     staging:
       +schema: staging
       +materialized: view

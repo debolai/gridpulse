@@ -21,13 +21,28 @@
 {%- endmacro %}
 
 
-{# A source timestamp (UTC instant, with or without zone) as a zone-less UTC timestamp(6). #}
+{#
+  The zone-less timestamp type for UTC instants. Trino's Iceberg type is timestamp(6); Athena
+  views live in the Glue/Hive catalog, whose only timestamp type is plain `timestamp`.
+  Mart contracts can't call macros (YAML is rendered without them), so they repeat this
+  choice inline: data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}".
+#}
+{% macro timestamp_type() -%}
+    {{ return(adapter.dispatch('timestamp_type', 'gridpulse')()) }}
+{%- endmacro %}
+
+{% macro default__timestamp_type() -%}timestamp(6){%- endmacro %}
+
+{% macro athena__timestamp_type() -%}timestamp{%- endmacro %}
+
+
+{# A source timestamp (UTC instant, with or without zone) as a zone-less UTC timestamp. #}
 {% macro to_utc_timestamp(column) -%}
     {{ return(adapter.dispatch('to_utc_timestamp', 'gridpulse')(column)) }}
 {%- endmacro %}
 
 {% macro default__to_utc_timestamp(column) -%}
-    cast({{ column }} at time zone 'UTC' as timestamp(6))
+    cast({{ column }} at time zone 'UTC' as {{ timestamp_type() }})
 {%- endmacro %}
 
 
@@ -37,7 +52,19 @@
 {%- endmacro %}
 
 {% macro default__utc_to_local(column, time_zone) -%}
-    cast(at_timezone(with_timezone({{ column }}, 'UTC'), {{ time_zone }}) as timestamp(6))
+    cast(at_timezone(with_timezone({{ column }}, 'UTC'), {{ time_zone }}) as {{ timestamp_type() }})
+{%- endmacro %}
+
+{#
+  Athena casts a zoned timestamp to `timestamp` by converting to UTC (Trino keeps the wall
+  clock), which silently turns every local time back into UTC. Format the zoned value as text
+  in its own zone, then parse it. Caught by the DST unit test on 2026-10-12.
+#}
+{% macro athena__utc_to_local(column, time_zone) -%}
+    date_parse(
+        format_datetime(at_timezone(with_timezone({{ column }}, 'UTC'), {{ time_zone }}), 'yyyy-MM-dd HH:mm:ss'),
+        '%Y-%m-%d %H:%i:%s'
+    )
 {%- endmacro %}
 
 

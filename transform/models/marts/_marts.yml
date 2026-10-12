@@ -65,12 +65,12 @@ models:
                 to: ref('dim_balancing_authority')
                 field: ba_code
       - name: period_utc
-        data_type: timestamp(6)
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour, UTC.
         constraints:
           - type: not_null
       - name: period_local
-        data_type: timestamp(6)
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour in the BA's local time zone.
         data_tests: [not_null]
       - name: date_local
@@ -95,7 +95,7 @@ models:
           Total interchange (EIA series TI), MWh. Positive = net exports, negative = net
           imports. The semantic layer's net_imports metric flips the sign.
       - name: last_ingested_at_utc
-        data_type: timestamp(6)
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Latest load that changed any series for this BA-hour.
 
 unit_tests:

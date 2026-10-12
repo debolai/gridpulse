@@ -117,6 +117,8 @@ class IcebergSink:
         }
         if settings.catalog_type == "rest":
             props |= {"uri": settings.catalog_uri, "warehouse": settings.catalog_warehouse}
+        else:  # glue: table locations come from the Glue database's location_uri
+            props |= {"glue.region": settings.s3_region, "client.region": settings.s3_region}
         return cls(load_catalog("gridpulse", **props), settings.raw_namespace)
 
     def table(self, route: Route) -> Table:

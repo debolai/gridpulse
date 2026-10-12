@@ -6,7 +6,7 @@ COMPOSE := docker compose -f local/compose.yaml
 .PHONY: help setup lint format test test-integration status doctor clean \
 	up-lake up down ps logs reset prune trino extract extract-sample \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
-	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami
+	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -90,6 +90,10 @@ extract-sample: ## Load region-data for the sample BAs: make extract-sample STAR
 	$(COMPOSE) run --rm --build extractor eia --route region-data \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
 
+extract-sample-aws: ## Same as extract-sample, but into the AWS dev lake (S3 + Glue)
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route region-data \
+		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
+
 # --- dbt (transform/) ---------------------------------------------------------
 
 DBT := DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform uv run --quiet dbt
@@ -99,6 +103,9 @@ dbt-deps: ## Install dbt packages (pinned in transform/package-lock.yml)
 
 dbt-build: dbt-deps ## Build and test all dbt models on the local lake (DBT_TARGET=aws for Athena)
 	$(DBT) build $(ARGS)
+
+dbt-build-aws: dbt-deps ## Build and test all dbt models on Athena (AWS dev)
+	AWS_PROFILE=$(AWS_PROFILE) DBT_TARGET=aws $(DBT) build $(ARGS)
 
 dbt-test: ## Run dbt data and unit tests only
 	$(DBT) test $(ARGS)

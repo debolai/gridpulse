@@ -37,10 +37,10 @@ select
     ba_code,
     series_code,
     series_name,
-    period_utc,
+    cast(period_utc as {{ timestamp_type() }}) as period_utc,
     value_mwh,
     record_hash,
     run_id,
-    ingested_at_utc
+    cast(ingested_at_utc as {{ timestamp_type() }}) as ingested_at_utc
 from ranked
 where recency_rank = 1
