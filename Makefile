@@ -5,7 +5,8 @@ COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint format test test-integration status doctor clean \
 	up-lake up down ps logs reset prune trino extract extract-sample \
-	dbt-deps dbt-build dbt-test dbt-docs dbt-drop
+	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
+	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -107,4 +108,32 @@ dbt-docs: ## Generate and serve dbt docs at http://localhost:8081
 
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'
+
+# --- AWS foundation (Terraform) ------------------------------------------------
+# Always-on, low-cost layer: buckets, Glue, Athena workgroups, budgets. Always plan, review,
+# then apply the saved plan. Uses the SSO profile; renew with `aws sso login --profile gridpulse`.
+
+AWS_PROFILE ?= gridpulse
+TF_ENV ?= dev
+TF_DIR := infra/terraform/envs/$(TF_ENV)/foundation
+TF := AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR)
+
+aws-whoami: ## Show which AWS account and role you're using
+	@aws sts get-caller-identity --profile $(AWS_PROFILE) --query Arn --output text
+
+tf-bootstrap: ## One-time: create the Terraform state bucket (idempotent)
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/bootstrap-state.sh
+
+tf-init: ## Initialise Terraform against the remote state bucket
+	$(TF) init -input=false -backend-config="bucket=gridpulse-tfstate-$$(aws sts get-caller-identity --profile $(AWS_PROFILE) --query Account --output text)"
+
+tf-plan: ## Show what Terraform would change (saved to foundation.tfplan)
+	$(TF) plan -input=false -out=foundation.tfplan
+
+tf-apply: ## Apply the reviewed plan from `make tf-plan` (nothing else)
+	$(TF) apply -input=false foundation.tfplan
+
+tf-fmt: ## Format and validate Terraform
+	terraform fmt -recursive infra/terraform
+	$(TF) validate
 

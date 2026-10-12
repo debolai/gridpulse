@@ -37,3 +37,6 @@ local/data/
 .idea/
 .vscode/
 transform/.user.yml
+
+# Terraform variables can hold personal details (emails); commit *.tfvars.example instead
+terraform.tfvars
