@@ -1,0 +1,38 @@
+# Personal task list for the human (see CLAUDE.md) — never committed
+TODO.md
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Local runtime data
+local/data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

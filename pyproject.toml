@@ -1,0 +1,30 @@
+[project]
+name = "gridpulse"
+version = "0.1.0"
+description = "Grid operations analytics platform: EIA + NOAA data, Iceberg lake, dbt, MetricFlow, LangGraph agent."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pre-commit",
+    "pytest",
+    "ruff",
+    "yamllint",
+]
+
+# Component packages (ingestion, semantic, agent, ...) join this workspace as they are built.
+[tool.uv.workspace]
+members = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
