@@ -21,7 +21,9 @@ jobs:
       - run: make lint
       - run: make test
       - name: dbt parse (validates models, YAML, contracts and unit-test definitions)
-        run: make dbt-deps && DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform uv run dbt parse
+        run: make dbt-deps && DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform uv run dbt parse --no-partial-parse
+      - name: MetricFlow validate (semantic models and metrics; warehouse checks run locally)
+        run: cd transform && DBT_PROFILES_DIR=. uv run mf validate-configs --skip-dw
 
   images:
     runs-on: ubuntu-latest

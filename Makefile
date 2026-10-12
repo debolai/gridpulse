@@ -6,7 +6,8 @@ COMPOSE := docker compose -f local/compose.yaml
 .PHONY: help setup lint format test test-integration status doctor clean \
 	up-lake up down ps logs reset prune trino extract extract-sample \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
-	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws
+	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
+	semantic-manifest semantic-api mf
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -143,4 +144,15 @@ tf-apply: ## Apply the reviewed plan from `make tf-plan` (nothing else)
 tf-fmt: ## Format and validate Terraform
 	terraform fmt -recursive infra/terraform
 	$(TF) validate
+
+# --- Semantic layer (semantic/) -------------------------------------------------
+
+semantic-manifest: ## Rebuild the semantic manifest (full parse: partial parsing misses metric edits)
+	$(DBT) parse --no-partial-parse
+
+semantic-api: semantic-manifest ## Serve the semantic API at http://localhost:8090/docs (DBT_TARGET=aws for Athena)
+	DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-semantic
+
+mf: ## Run MetricFlow directly, e.g. make mf ARGS="query --metrics demand --group-by balancing_authority"
+	cd transform && DBT_PROFILES_DIR=. AWS_PROFILE=$(AWS_PROFILE) uv run --quiet mf $(ARGS)
 

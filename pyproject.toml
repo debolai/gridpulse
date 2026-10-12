@@ -9,6 +9,8 @@ dependencies = []
 [dependency-groups]
 dev = [
     "gridpulse-ingestion",
+    "gridpulse-semantic",
+    "httpx",
     "pre-commit",
     "pytest",
     "respx",
@@ -22,6 +24,7 @@ transform = [
     "dbt-core>=1.12,<1.13",
     "dbt-trino",
     "dbt-athena",
+    "dbt-metricflow[dbt-trino,dbt-athena]",
 ]
 
 [tool.uv]
@@ -29,10 +32,11 @@ default-groups = ["dev", "transform"]
 
 # Component packages (ingestion, semantic, agent, ...) join this workspace as they are built.
 [tool.uv.workspace]
-members = ["ingestion"]
+members = ["ingestion", "semantic"]
 
 [tool.uv.sources]
 gridpulse-ingestion = { workspace = true }
+gridpulse-semantic = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -42,9 +46,9 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["gridpulse_ingestion"]
+known-first-party = ["gridpulse_ingestion", "gridpulse_semantic"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "ingestion/tests"]
+testpaths = ["tests", "ingestion/tests", "semantic/tests"]
 addopts = "-q -m 'not integration'"
 markers = ["integration: needs the local stack running (make up-lake)"]

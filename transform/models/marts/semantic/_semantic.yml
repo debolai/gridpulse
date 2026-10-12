@@ -1,0 +1,27 @@
+version: 2
+
+# Time spines MetricFlow joins against (cumulative metrics, join_to_timespine, offsets).
+models:
+  - name: time_spine_hourly
+    description: One row per UTC hour, 2018-07-01 to 2030-12-31.
+    time_spine:
+      standard_granularity_column: date_hour
+    columns:
+      - name: date_hour
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        granularity: hour
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+
+  - name: time_spine_daily
+    description: One row per day, 2018-07-01 to 2030-12-31.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        data_type: date
+        granularity: day
+        constraints:
+          - type: not_null
+        data_tests: [unique]

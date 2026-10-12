@@ -8,15 +8,17 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A4 — Semantic layer: MetricFlow spike on Trino and Athena, then the first five metrics and the semantic API
+- Phase A5 — Minimal agent (LangGraph over the semantic API). Needs TODO #7 (Bedrock access) before live LLM calls; graph, validation and evals can start offline.
 
 ## Next up
-1. A4 spike: install `dbt-metricflow`; compile and run a sum, a ratio and a cumulative metric on Trino AND Athena; record an ADR
-2. A4: time spine model; semantic model on `fct_grid_hourly`; metrics `demand`, `peak_demand`, `forecast_error_mape`, `forecast_bias`, `data_completeness`
-3. A4: FastAPI semantic API (`GET /metrics`, `POST /compile`, `POST /query`) + SQL ground-truth tests
+1. A5: `agent/` package: LangGraph graph (route → plan → validate → execute → answer → ground-check) calling the semantic API
+2. A5: deterministic validator (allow-list from `GET /metrics?agent_only=true`, row limit, window limits, block summing peak_demand across BAs)
+3. A5: Bedrock client (small model routes, larger model plans/answers), FastAPI `/ask`, Streamlit UI
+4. A5: 15-question golden set scored on the planned metric request; ground-check test with an injected wrong number
 
 ## Blockers
-- None for A4. TODO #7 (Bedrock access) is needed before A5.
+- TODO #7 (Bedrock access) blocks live LLM calls in A5.
+- TODO #10 (renew AWS SSO login): Python/boto3 rejects the current SSO token; the CLI's cached role credentials work until ~03:37 UTC. Needed for further Athena work.
 
 ## Phase A — MVP slice
 - [x] **A0 Foundations** — 2026-10-12 — done when `make lint test` passes locally and in GitHub Actions
@@ -32,7 +34,10 @@ Repo: https://github.com/debolai/gridpulse
 - [x] **A3 dbt slice** — 2026-10-12 — done when `dbt build` passes on `local` and `aws` targets with equal row counts for a fixed window
   - [x] Local (Trino) half — 2026-10-12. Evidence: `make dbt-build` PASS=26 (1 seed, 4 models, 18 data tests, 3 unit tests incl. DST spring-forward/fall-back, Arizona and the A→B→A revert case). Incremental vs `--full-refresh` in a check schema: 14,832 = 14,832 rows, 0 differences either way. `make test-integration` 3 passed, no test schemas left.
   - [x] AWS (Athena) half — 2026-10-12. Evidence: Terraform foundation applied (27 resources; re-plan shows no changes). `make extract-sample-aws START=2026-07-01 END=2026-10-12` → 58,943/58,943 rows via Glue. `make dbt-build-aws` PASS=26. `fct_grid_hourly` 14,832 rows on both engines; July per-BA hours, demand, net generation, interchange, local dates and hour ranges IDENTICAL between Trino and Athena.
-- [ ] **A4 Semantic layer** — done when `mf validate-configs` passes and every metric matches its reference SQL
+- [x] **A4 Semantic layer** — 2026-10-12 — done when `mf validate-configs` passes and every metric matches its reference SQL
+  - Evidence: spike on both engines (ADR-0002): `mf validate-configs` 0 errors/0 warnings incl. warehouse checks on Trino and Athena; sum, ratio, cumulative and join queries IDENTICAL Trino vs Athena. `test_semantic_ground_truth.py` 9 passed (each metric = hand-written SQL, rel tol 1e-9; MTD at day boundaries; unknown-metric rejection; cache hit; agent allow-list). 12 request-contract unit tests.
+  - Built: time spines (hourly/daily), `fct_grid_coverage_hourly`, metrics demand, peak_demand, forecast_error_mape, forecast_bias, data_completeness, demand_month_to_date; semantic API (`make semantic-api`, /health /metrics /compile /query, cache keyed by dbt invocation).
+  - Later (A6): semantic API container image.
 - [ ] **A5 Minimal agent** — done when eval accuracy ≥ 90% and an injected wrong number is caught
 - [ ] **A6 Scheduling + AWS** — done when `make aws-down && make aws-up` restores a demo that answers the smoke question
 - [ ] **MVP checkpoint** — README MVP section, demo GIF, "still to come" list
@@ -50,6 +55,8 @@ Repo: https://github.com/debolai/gridpulse
 - (empty — park scope creep here instead of starting it)
 
 ## Findings to fold into the build
+- 2026-10-12: MetricFlow gotchas (ADR-0002): time bounds snap to query grain (API uses typed half-open metric_time filters instead); cumulative `period_agg` defaults to `first`; partial parsing keeps stale metrics (`make semantic-manifest` does a full parse); dimensions are entity-scoped (`grid_hour__hour_local`).
+- 2026-10-12: AWS SSO: boto3 can reject an SSO token the cache still lists as valid, while the CLI keeps working from cached role credentials. Workaround: `aws configure export-credentials`; fix: `aws sso login`.
 - 2026-10-12: Athena casts a zoned timestamp to `timestamp` by converting to UTC (Trino keeps the wall clock). Local times would silently have equalled UTC; the DST unit test caught it. `athena__utc_to_local` formats then parses instead.
 - 2026-10-12: Athena views live in the Glue/Hive catalog: no `timestamp(6)`. `timestamp_type()` dispatches the type; contracts choose it inline (YAML can't call macros). dbt unit tests on Athena use Hive CTAS, so models cast UTC timestamps explicitly.
 - 2026-10-12: EIA's BA "Time Zone" is a reporting convention: EPE, PNM and WACM are labelled "Arizona" (MST all year) but observe DST. Seed keeps both `eia_time_zone` and a geographic IANA `time_zone`.
@@ -68,3 +75,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — A3 local half complete: dbt project (Trino + Athena targets), EIA-sourced BA seed, staging → latest values → dim/fct with contracts; incremental proven equal to full rebuild. Next: A4 spike on Trino.
 - 2026-10-12 — TODO #6 done: AWS account with IAM Identity Center admin, SSO profile `gridpulse` (us-east-1), root MFA on. Waiting on budget email (#9).
 - 2026-10-12 — A3 complete: AWS foundation applied (buckets, Glue, Athena workgroups, $50 budget); sample loaded via Glue; dbt builds on Athena with identical results to Trino. Next: A4 MetricFlow spike on both engines.
+- 2026-10-12 — A4 complete: MetricFlow spike passed on Trino and Athena (ADR-0002); 6 governed metrics; semantic API with SQL ground-truth tests. Next: A5 agent.
