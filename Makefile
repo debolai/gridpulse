@@ -4,7 +4,8 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint format test test-integration status doctor clean \
-	up-lake up down ps logs reset prune trino extract extract-sample
+	up-lake up down ps logs reset prune trino extract extract-sample \
+	dbt-deps dbt-build dbt-test dbt-docs dbt-drop
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -42,7 +43,7 @@ doctor: ## Check Docker memory and disk headroom
 	@df -h . | tail -1 | awk '{print "Disk free: " $$4}'
 
 clean: ## Remove caches and build output (keeps data)
-	rm -rf .pytest_cache .ruff_cache transform/target transform/logs
+	rm -rf .pytest_cache .ruff_cache transform/target transform/logs transform/dbt_packages
 	find . -name __pycache__ -type d -prune -not -path './.venv/*' -exec rm -rf {} +
 
 # --- Local stack -------------------------------------------------------------
@@ -87,4 +88,23 @@ extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data -
 extract-sample: ## Load region-data for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08
 	$(COMPOSE) run --rm --build extractor eia --route region-data \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
+
+# --- dbt (transform/) ---------------------------------------------------------
+
+DBT := DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform uv run --quiet dbt
+
+dbt-deps: ## Install dbt packages (pinned in transform/package-lock.yml)
+	$(DBT) deps
+
+dbt-build: dbt-deps ## Build and test all dbt models on the local lake (DBT_TARGET=aws for Athena)
+	$(DBT) build $(ARGS)
+
+dbt-test: ## Run dbt data and unit tests only
+	$(DBT) test $(ARGS)
+
+dbt-docs: ## Generate and serve dbt docs at http://localhost:8081
+	$(DBT) docs generate && $(DBT) docs serve --port 8081
+
+dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
+	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'
 

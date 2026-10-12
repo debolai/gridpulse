@@ -1,0 +1,73 @@
+ba_code,ba_name,region_code,region_name,interconnection,eia_time_zone,time_zone,is_generation_only,is_active,activation_date,retirement_date
+AEC,PowerSouth Energy Cooperative,SE,Southeast,Eastern,Central,America/Chicago,false,false,,2021-09-01
+AECI,"Associated Electric Cooperative, Inc.",MIDW,Midwest,Eastern,Central,America/Chicago,false,true,,
+AVA,Avista Corporation,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+AVRN,"Avangrid Renewables, LLC",NW,Northwest,Western,Pacific,America/Los_Angeles,true,true,2018-07-31,
+AZPS,Arizona Public Service Company,SW,Southwest,Western,Arizona,America/Phoenix,false,true,,
+BANC,Balancing Authority of Northern California,CAL,California,Western,Pacific,America/Los_Angeles,false,true,,
+BHBA,Black Hills Energy,NW,Northwest,Western,Mountain,America/Denver,false,true,2026-04-01,
+BPAT,Bonneville Power Administration,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+CHPD,Public Utility District No. 1 of Chelan County,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+CISO,California Independent System Operator,CAL,California,Western,Pacific,America/Los_Angeles,false,true,,
+CPLE,Duke Energy Progress East,CAR,Carolinas,Eastern,Eastern,America/New_York,false,true,,
+CPLW,Duke Energy Progress West,CAR,Carolinas,Eastern,Eastern,America/New_York,false,true,,
+DEAA,"Arlington Valley, LLC",SW,Southwest,Western,Arizona,America/Phoenix,true,true,,
+DOPD,PUD No. 1 of Douglas County,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+DUK,Duke Energy Carolinas,CAR,Carolinas,Eastern,Eastern,America/New_York,false,true,,
+EEI,"Electric Energy, Inc.",MIDW,Midwest,Eastern,Central,America/Chicago,true,false,,2020-02-29
+EPE,El Paso Electric Company,SW,Southwest,Western,Arizona,America/Denver,false,true,,
+ERCO,"Electric Reliability Council of Texas, Inc.",TEX,Texas,ERCOT,Central,America/Chicago,false,true,,
+FMPP,Florida Municipal Power Pool,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+FPC,"Duke Energy Florida, Inc.",FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+FPL,Florida Power & Light Co.,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+GCPD,"Public Utility District No. 2 of Grant County, Washington",NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+GLHB,GridLiance,MIDW,Midwest,Eastern,Central,America/Chicago,true,false,2020-02-29,2022-09-01
+GRID,"Gridforce Energy Management, LLC",NW,Northwest,Western,Pacific,America/Los_Angeles,true,true,,
+GRIF,"Griffith Energy, LLC",SW,Southwest,Western,Arizona,America/Phoenix,true,false,,2023-11-01
+GRMA,"Gila River Power, LLC",SW,Southwest,Western,Arizona,America/Phoenix,true,false,,2018-05-03
+GVL,Gainesville Regional Utilities,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+GWA,"NaturEner Power Watch, LLC",NW,Northwest,Western,Mountain,America/Denver,true,true,,
+HGMA,"New Harquahala Generating Company, LLC",SW,Southwest,Western,Arizona,America/Phoenix,true,false,,2025-06-01
+HST,City of Homestead,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+IID,Imperial Irrigation District,CAL,California,Western,Pacific,America/Los_Angeles,false,true,,
+IPCO,Idaho Power Company,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+ISNE,ISO New England,NE,New England,Eastern,Eastern,America/New_York,false,true,,
+JEA,JEA,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+LDWP,Los Angeles Department of Water and Power,CAL,California,Western,Pacific,America/Los_Angeles,false,true,,
+LGEE,Louisville Gas and Electric Company and Kentucky Utilities Company,MIDW,Midwest,Eastern,Eastern,America/New_York,false,true,,
+MISO,"Midcontinent Independent System Operator, Inc.",MIDW,Midwest,Eastern,Eastern,America/New_York,false,true,,
+NEVP,Nevada Power Company,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+NSB,Utilities Commission of New Smyrna Beach,FLA,Florida,Eastern,Eastern,America/New_York,false,false,,2020-01-08
+NWMT,NorthWestern Corporation,NW,Northwest,Western,Mountain,America/Denver,false,true,,
+NYIS,New York Independent System Operator,NY,New York,Eastern,Eastern,America/New_York,false,true,,
+OVEC,Ohio Valley Electric Corporation,MIDA,Mid-Atlantic,Eastern,Eastern,America/New_York,false,false,,2018-12-01
+PACE,PacifiCorp East,NW,Northwest,Western,Mountain,America/Denver,false,true,,
+PACW,PacifiCorp West,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+PGE,Portland General Electric Company,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+PJM,"PJM Interconnection, LLC",MIDA,Mid-Atlantic,Eastern,Eastern,America/New_York,false,true,,
+PNM,Public Service Company of New Mexico,SW,Southwest,Western,Arizona,America/Denver,false,true,,
+PSCO,Public Service Company of Colorado,NW,Northwest,Western,Mountain,America/Denver,false,true,,
+PSEI,"Puget Sound Energy, Inc.",NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+SC,South Carolina Public Service Authority,CAR,Carolinas,Eastern,Eastern,America/New_York,false,true,,
+SCEG,"Dominion Energy South Carolina, Inc.",CAR,Carolinas,Eastern,Eastern,America/New_York,false,true,,
+SCL,Seattle City Light,NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+SEC,Seminole Electric Cooperative,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+SEPA,Southeastern Power Administration,SE,Southeast,Eastern,Central,America/Chicago,true,true,,
+SIKE,Sikeston Board Of Municipal Utilities,MIDW,Midwest,Eastern,Central,America/Chicago,true,true,2025-06-01,
+SOCO,"Southern Company Services, Inc. - Trans",SE,Southeast,Eastern,Central,America/Chicago,false,true,,
+SPA,Southwestern Power Administration,CENT,Central,Eastern,Central,America/Chicago,false,true,,
+SRP,Salt River Project Agricultural Improvement and Power District,SW,Southwest,Western,Arizona,America/Phoenix,false,true,,
+SWPP,Southwest Power Pool,CENT,Central,Eastern,Central,America/Chicago,false,true,,
+SWPW,Southwest Power Pool West Balancing Authority Area,NW,Northwest,Western,Central,America/Chicago,false,true,2026-04-01,
+TAL,City of Tallahassee,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+TEC,Tampa Electric Company,FLA,Florida,Eastern,Eastern,America/New_York,false,true,,
+TEPC,Tucson Electric Power,SW,Southwest,Western,Arizona,America/Phoenix,false,true,,
+TIDC,Turlock Irrigation District,CAL,California,Western,Pacific,America/Los_Angeles,false,true,,
+TPWR,"City of Tacoma, Department of Public Utilities, Light Division",NW,Northwest,Western,Pacific,America/Los_Angeles,false,true,,
+TVA,Tennessee Valley Authority,TEN,Tennessee,Eastern,Central,America/Chicago,false,true,,
+WACM,Western Area Power Administration - Rocky Mountain Region,NW,Northwest,Western,Arizona,America/Denver,false,false,,2026-04-01
+WALC,Western Area Power Administration - Desert Southwest Region,SW,Southwest,Western,Arizona,America/Phoenix,false,true,,
+WAUE,Western Area Power Administration - Upper Great Plains East,NW,Northwest,Eastern,Mountain,America/Denver,false,false,,2015-10-01
+WAUW,Western Area Power Administration - Upper Great Plains West,NW,Northwest,Western,Mountain,America/Denver,false,false,,2026-04-01
+WWA,"NaturEner Wind Watch, LLC",NW,Northwest,Western,Mountain,America/Denver,true,false,,2025-10-01
+YAD,"Alcoa Power Generating, Inc. - Yadkin Division",CAR,Carolinas,Eastern,Eastern,America/New_York,true,true,,

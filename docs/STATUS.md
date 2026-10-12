@@ -8,14 +8,13 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A3 — dbt slice (local Trino target first; the `aws` target waits on TODO #6)
+- Phase A4 — Semantic layer (Trino half of the spike first; the Athena half and A3's `aws` parity wait on TODO #6)
 
 ## Next up
-1. A3: `transform/` dbt project with `dbt-trino` (local) and `dbt-athena` (aws) targets; `adapter.dispatch` macros for engine differences
-2. A3: seed `ba_reference` (BA code, name, time zone, interconnection)
-3. A3: `stg_eia__region_data` (cast, rename, dedupe by `_record_hash`) → `int_grid__latest_values` (incremental merge, `lookback_filter()`) → `dim_balancing_authority`, `fct_grid_hourly` with contract
-4. A3: dbt unit tests incl. DST spring-forward/fall-back days; generic tests
-5. Load ~3 months of sample data locally (`make extract-sample START=2026-07-01 END=2026-10-01`)
+1. A4 spike: install `dbt-metricflow`; compile and run a sum, a ratio and a cumulative metric on Trino; record an ADR
+2. A4: time spine model; semantic model on `fct_grid_hourly`; metrics `demand`, `peak_demand`, `forecast_error_mape`, `forecast_bias`, `data_completeness`
+3. A4: FastAPI semantic API (`GET /metrics`, `POST /compile`, `POST /query`) + SQL ground-truth tests
+4. When TODO #6 lands: A3 `aws` target parity (Terraform foundation first), then the Athena half of the A4 spike
 
 ## Blockers
 - TODO #6 (AWS credentials: none configured on this Mac yet) blocks the A3 `aws` target and A6.
@@ -32,6 +31,8 @@ Repo: https://github.com/debolai/gridpulse
 - [x] **A2 region-data extractor** — 2026-10-12 — done when a rerun adds no new distinct rows and the completeness assert passes
   - Evidence: `make extract-sample START=2026-10-01 END=2026-10-08` twice → 3,984/3,984 rows (completeness OK), same run_id; Trino: 7,968 raw rows, 3,984 distinct hashes = 3,984 distinct keys. `make test-integration` 2 passed (rerun test in a throwaway namespace, cleaned up). 31 unit tests on recorded fixtures.
 - [ ] **A3 dbt slice** — done when `dbt build` passes on `local` and `aws` targets with equal row counts for a fixed window
+  - [x] Local (Trino) half — 2026-10-12. Evidence: `make dbt-build` PASS=26 (1 seed, 4 models, 18 data tests, 3 unit tests incl. DST spring-forward/fall-back, Arizona and the A→B→A revert case). Incremental vs `--full-refresh` in a check schema: 14,832 = 14,832 rows, 0 differences either way. `make test-integration` 3 passed, no test schemas left.
+  - [ ] AWS (Athena) half — blocked on TODO #6. Check then: contract `data_type`s (Trino names) and `timestamptz` handling on Athena.
 - [ ] **A4 Semantic layer** — done when `mf validate-configs` passes and every metric matches its reference SQL
 - [ ] **A5 Minimal agent** — done when eval accuracy ≥ 90% and an injected wrong number is caught
 - [ ] **A6 Scheduling + AWS** — done when `make aws-down && make aws-up` restores a demo that answers the smoke question
@@ -50,6 +51,8 @@ Repo: https://github.com/debolai/gridpulse
 - (empty — park scope creep here instead of starting it)
 
 ## Findings to fold into the build
+- 2026-10-12: EIA's BA "Time Zone" is a reporting convention: EPE, PNM and WACM are labelled "Arizona" (MST all year) but observe DST. Seed keeps both `eia_time_zone` and a geographic IANA `time_zone`.
+- 2026-10-12: one extraction attempt (2026-10-05..12) failed and its manifest was overwritten by the successful retry, so the cause is unknown. Fixed: manifests are now kept per attempt.
 - 2026-10-12: ERCO is missing 24 of 168 hours of `DF` and `TI` in 2026-10-01..07 (D and NG complete). Real gap for B1 quality flags and `data_completeness`.
 - 2026-10-12: EIA `end` is inclusive; extractor windows are half-open [start, end) and send end − 1h. `total` is a string. `warnings` sit at the top level of the response.
 - 2026-10-12: Lakekeeper (STS off) uses remote signing: clients get no storage keys, and PyIceberg must use fsspec (`s3fs`). On AWS, Glue + IAM roles use PyArrow IO instead.
@@ -61,3 +64,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — TODO #4 done: EIA key verified with a live call (HTTP 200).
 - 2026-10-12 — A1 complete: local lake (SeaweedFS + Lakekeeper + Trino) up from scratch in ~13 s; Iceberg round-trip test passes. MinIO images discontinued → SeaweedFS (ADR-0001). Next: A2.
 - 2026-10-12 — A2 complete: region-data extractor (container), 1 week × 6 BAs loaded locally, rerun idempotent. Next: A3 dbt slice.
+- 2026-10-12 — A3 local half complete: dbt project (Trino + Athena targets), EIA-sourced BA seed, staging → latest values → dim/fct with contracts; incremental proven equal to full rebuild. Next: A4 spike on Trino.

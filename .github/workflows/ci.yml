@@ -20,6 +20,8 @@ jobs:
       - run: uv sync --locked
       - run: make lint
       - run: make test
+      - name: dbt parse (validates models, YAML, contracts and unit-test definitions)
+        run: make dbt-deps && DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform uv run dbt parse
 
   images:
     runs-on: ubuntu-latest

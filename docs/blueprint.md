@@ -139,7 +139,7 @@ Ingestion re-pulls a rolling window of recent hours on every run and keeps every
 
 **Decision: self-imposed rate limit plus exponential backoff with jitter.** Why: EIA temporarily suspends keys that exceed its throttles. A token-bucket limiter (default about one request per second, configurable) and `tenacity` retries on 429 and 5xx responses keep backfills from locking you out.
 
-**Decision: deterministic, idempotent runs.** Why: `_run_id` is derived from route plus window, and raw S3 keys use it, so re-running a window overwrites the same raw files and produces the same hashes. Duplicate rows from reruns are removed by `_record_hash` in staging.
+**Decision: deterministic, idempotent runs.** Why: `_run_id` is derived from route plus window, and raw S3 keys use it, so re-running a window overwrites the same raw files and produces the same hashes. Raw keeps every load; the latest-value model picks the newest observation per key, so reruns change nothing downstream. Run manifests are kept per attempt, so a failed attempt stays on record after a successful retry.
 
 **Decision: schema drift policy.** Why: unknown new fields are logged and stored in a JSON overflow column, so the run continues; a missing required field fails the run. This mirrors how production teams treat additive versus breaking changes.
 
@@ -189,7 +189,7 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 | Seeds | `ba_reference` | One row per BA | Code, name, time zone, interconnection, active dates |
 | Seeds | `ba_weather_stations` | BA × station | Station mapping and population weights |
 | Seeds | `fuel_type_map` | One row per EIA fuel code | Maps codes to fuel names and a renewable flag |
-| Staging | `stg_eia__region_data` | BA × series × hour × version | Cast strings to numbers, rename, drop exact duplicates by `_record_hash` |
+| Staging | `stg_eia__region_data` | BA × series × hour × version | Cast strings to numbers, rename, drop exact duplicates (same `_record_hash` and same load). Loads are not collapsed by hash, so a value that reverts (A → B → A) still resolves to the newest load |
 | Staging | `stg_eia__fuel_type_data` | BA × fuel × hour × version | Same pattern |
 | Staging | `stg_eia__interchange_data` | BA pair × hour × version | Same pattern |
 | Staging | `stg_noaa__observations` | Station × observation time | Scale tenths, null out `9999`, keep quality codes |
@@ -206,7 +206,7 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 | Marts | `fct_ingestion_runs` | Pipeline run | Expected versus received rows and run duration, from manifests |
 | Snapshots | `snap_ba_reference` | BA × validity range | SCD Type 2 history of BA attributes |
 
-**Decision: resolve revisions with `merge` on a unique key, filtered to a lookback window.** Why: each incremental run only re-reads source rows ingested since the last run, then merges on (`ba_code`, `series`, `period_utc`). A shared macro, `lookback_filter()`, reads the same 30-day window as ingestion from `dbt_project.yml`, so the two layers can never disagree. A monthly full refresh in a scheduled job proves the incremental logic matches a full rebuild.
+**Decision (revised 2026-10-12): resolve revisions with `merge` on a unique key, driven by an ingestion watermark.** Why: each incremental run reads only observations loaded since the last run (`ingested_at_utc` above the model's own maximum, via the `incremental_watermark()` macro), whatever hours they cover, then merges on (`ba_code`, `series_code`, `period_utc`). Following the data rather than a fixed 30-day window means backfills and gap catch-ups older than the window still land, and dbt can never disagree with ingestion about what is new. `fct_grid_hourly` rebuilds only the BA-hours that changed. Partition-pruned merge predicates are deferred until Athena scan costs show they are needed. A monthly full refresh in a scheduled job proves the incremental logic matches a full rebuild (first proven locally on 2026-10-12: identical row sets).
 
 **Decision: keep the revision history as its own mart.** Why: "how much does PJM revise its demand data, and how late?" is a real question data consumers ask. It also gives the LLM a way to warn that recent hours may still change.
 
@@ -533,3 +533,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-12 — Fixed stale Cube references: evals, the nightly eval DAG, monorepo and image decisions, and Helm charts now point to MetricFlow and the semantic API. Cube remains only as the optional comparison track.
 - 2026-10-12 — Local S3 storage switched from MinIO to SeaweedFS (ADR-0001); MinIO's community images were discontinued.
 - 2026-10-12 — Ingestion: sort adds `type` as a third key (period + respondent alone is not unique); windows are half-open with EIA's inclusive `end` handled in the client; one Iceberg commit per run; locally the extractor runs in a container on the compose network because Lakekeeper vends container-internal endpoints and signs S3 requests remotely.
+- 2026-10-12 — dbt: watermark-driven incremental merges replace the fixed `lookback_filter()` window; staging no longer collapses versions by hash (A → B → A correctness); BA seed generated from EIA's EIA-930 reference tables with a geographic IANA `time_zone` alongside EIA's reporting label `eia_time_zone`; marts store UTC as zone-less `timestamp(6)`; run manifests kept per attempt.

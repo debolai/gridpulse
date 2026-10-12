@@ -25,7 +25,10 @@ class RawStore:
     """Raw responses and run manifests, laid out as in the blueprint:
 
     eia/route=<route>/ingest_date=<date>/run_id=<id>/page=0001.json.gz
-    _manifests/route=<route>/ingest_date=<date>/run_id=<id>.json
+    _manifests/route=<route>/ingest_date=<date>/run_id=<id>/attempt=<started_at>.json
+
+    Pages are overwritten by a rerun of the same window (deterministic). Manifests are kept
+    per attempt, so a failed attempt stays on record after a successful retry.
     """
 
     def __init__(self, s3_client, bucket: str) -> None:
@@ -51,8 +54,12 @@ class RawStore:
         )
 
     @staticmethod
-    def manifest_key(route: str, ingest_date: str, run_id: str) -> str:
-        return f"_manifests/route={route}/ingest_date={ingest_date}/run_id={run_id}.json"
+    def manifest_key(route: str, ingest_date: str, run_id: str, started_at: datetime) -> str:
+        attempt = started_at.strftime("%Y%m%dT%H%M%S%fZ")
+        return (
+            f"_manifests/route={route}/ingest_date={ingest_date}/run_id={run_id}/"
+            f"attempt={attempt}.json"
+        )
 
     def put_page(self, key: str, raw: bytes) -> None:
         # mtime=0 makes the gzip bytes deterministic, so reruns write identical objects.

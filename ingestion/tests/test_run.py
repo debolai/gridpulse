@@ -59,8 +59,37 @@ def test_run_writes_pages_rows_and_manifest(region_pages, raw_store, sink):
         for n in (1, 2, 3)
     ]
     assert list(raw_store.manifests) == [
-        f"_manifests/route=region-data/ingest_date=2026-10-12/run_id={run_id}.json"
+        f"_manifests/route=region-data/ingest_date=2026-10-12/run_id={run_id}/"
+        "attempt=20261012T170000000000Z.json"
     ]
+
+
+def test_failed_attempt_manifest_survives_a_successful_retry(region_pages, raw_store, sink):
+    broken = json.loads(json.dumps(region_pages))
+    del broken[0]["response"]["data"][0]["respondent"]
+    times = iter([NOW, NOW.replace(minute=5)])
+    with pytest.raises(RecordValidationError):
+        extract(
+            REGION_DATA,
+            START,
+            END,
+            client=ReplayClient(broken),
+            raw_store=raw_store,
+            sink=sink,
+            now=lambda: next(times),
+        )
+    extract(
+        REGION_DATA,
+        START,
+        END,
+        client=ReplayClient(region_pages),
+        raw_store=raw_store,
+        sink=sink,
+        now=lambda: next(times),
+    )
+
+    statuses = [m["status"] for _, m in sorted(raw_store.manifests.items())]
+    assert statuses == ["failed", "succeeded"]
 
 
 def test_records_match_the_raw_table_schema(region_pages, raw_store, sink):

@@ -109,5 +109,5 @@ def extract(
         raise
     finally:
         manifest["duration_seconds"] = round(time.monotonic() - clock, 3)
-        raw_store.put_manifest(raw_store.manifest_key(route.name, day, run_id), manifest)
+        raw_store.put_manifest(raw_store.manifest_key(route.name, day, run_id, started), manifest)
     return manifest

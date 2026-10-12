@@ -17,6 +17,16 @@ dev = [
     "yamllint",
 ]
 
+# dbt runs from the same locked environment as everything else (see transform/).
+transform = [
+    "dbt-core>=1.12,<1.13",
+    "dbt-trino",
+    "dbt-athena",
+]
+
+[tool.uv]
+default-groups = ["dev", "transform"]
+
 # Component packages (ingestion, semantic, agent, ...) join this workspace as they are built.
 [tool.uv.workspace]
 members = ["ingestion"]

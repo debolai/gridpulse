@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_eia__region_data
+    description: >
+      Typed EIA region-data observations. Grain: BA × series × hour × load. Values are cast
+      from strings to doubles; exact duplicates within a load are dropped.
+    columns:
+      - name: ba_code
+        description: Balancing authority code (EIA respondent).
+        data_tests: [not_null]
+      - name: series_code
+        description: "D = demand, DF = day-ahead demand forecast, NG = net generation, TI = total interchange."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["D", "DF", "NG", "TI"]
+      - name: period_utc
+        description: Start of the hour, UTC.
+        data_tests: [not_null]
+      - name: value_mwh
+        description: Value in MWh for the hour. Null when the BA did not report it.
+      - name: value_units
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["megawatthours"]
+      - name: record_hash
+        description: Identifies a version of the row (business fields hashed at ingestion).
+        data_tests: [not_null]
+      - name: ingested_at_utc
+        description: Start time of the load that observed this value.
+        data_tests: [not_null]

@@ -18,6 +18,8 @@ make help    # all commands
 make up-lake           # local lake: Trino at http://localhost:8080, catalog UI at http://localhost:8181/ui
 make test-integration  # prove Trino can write and read Iceberg tables, and reruns are idempotent
 make extract-sample START=2026-10-01 END=2026-10-08   # load a week of EIA data for 6 sample BAs (needs EIA_API_KEY in .env)
+make dbt-build         # build and test the dbt models (staging → intermediate → marts) on the local lake
+make dbt-docs          # browse model docs and lineage at http://localhost:8081
 make down              # stop (keeps data); `make reset` wipes it
 ```
 

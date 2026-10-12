@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: int_grid__latest_values
+    description: >
+      Latest observed value per balancing authority, series and hour. Grain: BA × series ×
+      hour. When EIA revises an hour, the newest load wins, including when a value returns
+      to an earlier one.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, series_code, period_utc]
+    columns:
+      - name: ba_code
+        data_tests: [not_null]
+      - name: series_code
+        data_tests: [not_null]
+      - name: period_utc
+        data_tests: [not_null]
+      - name: value_mwh
+        description: Latest value in MWh; null when the BA did not report the hour.
+      - name: ingested_at_utc
+        description: When this value was last observed (start of that load).
+        data_tests: [not_null]
+
+unit_tests:
+  - name: latest_observation_wins_even_when_value_reverts
+    description: >
+      An hour revised A -> B -> A must end at A with the third load's time. Collapsing
+      versions by hash before ranking would wrongly return B.
+    model: int_grid__latest_values
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('stg_eia__region_data')
+        format: csv
+        rows: |
+          ba_code,series_code,series_name,period_utc,value_mwh,record_hash,run_id,ingested_at_utc
+          PJM,D,Demand,2026-10-01 00:00:00,100.0,a,r1,2026-10-01 02:00:00
+          PJM,D,Demand,2026-10-01 00:00:00,110.0,b,r2,2026-10-02 02:00:00
+          PJM,D,Demand,2026-10-01 00:00:00,100.0,a,r3,2026-10-03 02:00:00
+          PJM,NG,Net generation,2026-10-01 00:00:00,90.0,c,r1,2026-10-01 02:00:00
+    expect:
+      format: csv
+      rows: |
+        ba_code,series_code,period_utc,value_mwh,run_id,ingested_at_utc
+        PJM,D,2026-10-01 00:00:00,100.0,r3,2026-10-03 02:00:00
+        PJM,NG,2026-10-01 00:00:00,90.0,r1,2026-10-01 02:00:00

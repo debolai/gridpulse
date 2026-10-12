@@ -1,0 +1,41 @@
+name: gridpulse
+version: "0.1.0"
+config-version: 2
+profile: gridpulse
+
+model-paths: [models]
+seed-paths: [seeds]
+macro-paths: [macros]
+snapshot-paths: [snapshots]
+test-paths: [tests]
+clean-targets: [target, dbt_packages]
+
+flags:
+  require_certificate_validation: true
+
+vars:
+  # Days the daily ingestion sweep re-pulls to catch revisions (blueprint: 30).
+  revision_window_days: 30
+
+seeds:
+  gridpulse:
+    +schema: reference
+    ba_reference:
+      +column_types:
+        is_generation_only: boolean
+        is_active: boolean
+        activation_date: date
+        retirement_date: date
+
+models:
+  gridpulse:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts
+      +materialized: table
+      +contract:
+        enforced: true

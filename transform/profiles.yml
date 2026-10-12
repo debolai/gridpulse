@@ -1,0 +1,26 @@
+# Committed on purpose: no secrets here, only env-var lookups.
+# local = Trino on the compose stack; aws = Athena (needs AWS credentials, TODO #6).
+gridpulse:
+  target: "{{ env_var('DBT_TARGET', 'local') }}"
+  outputs:
+    local:
+      type: trino
+      method: none
+      user: dbt
+      host: "{{ env_var('TRINO_HOST', 'localhost') }}"
+      port: "{{ env_var('TRINO_PORT', '8080') | as_number }}"
+      http_scheme: http
+      database: lake
+      schema: dbt
+      threads: 4
+
+    aws:
+      type: athena
+      region_name: "{{ env_var('AWS_REGION', 'us-east-1') }}"
+      database: awsdatacatalog
+      schema: dbt
+      s3_staging_dir: "s3://gridpulse-{{ env_var('GRIDPULSE_ENV', 'dev') }}-athena-results/dbt/"
+      s3_data_dir: "s3://gridpulse-{{ env_var('GRIDPULSE_ENV', 'dev') }}-lake/dbt/"
+      s3_data_naming: schema_table_unique
+      work_group: "gridpulse-{{ env_var('GRIDPULSE_ENV', 'dev') }}"
+      threads: 4

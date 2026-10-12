@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from gridpulse_ingestion.storage import RawStore
+
 FIXTURES = Path(__file__).parent / "fixtures" / "eia_region_data"
 
 
@@ -27,11 +29,7 @@ class FakeRawStore:
             f"eia/route={route}/ingest_date={day}/run_id={run_id}/page={n:04d}.json.gz"
         )
     )
-    manifest_key = staticmethod(
-        lambda route, day, run_id: (
-            f"_manifests/route={route}/ingest_date={day}/run_id={run_id}.json"
-        )
-    )
+    manifest_key = staticmethod(RawStore.manifest_key)
 
     def put_page(self, key: str, raw: bytes) -> None:
         self.pages[key] = raw
