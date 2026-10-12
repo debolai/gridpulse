@@ -7,5 +7,7 @@ rules:
     allowed-values: ["true", "false", "on"]
 ignore: |
   .venv/
+  **/.terraform/
+  infra/helm/*/templates/
   transform/target/
   transform/dbt_packages/

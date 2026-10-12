@@ -7,6 +7,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
+	aws-plan aws-up aws-down aws-status aws-ui \
 	semantic-manifest semantic-api mf bedrock-check agent-api agent-ui agent-eval
 
 help: ## List available commands
@@ -196,4 +197,26 @@ agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 
 agent-eval: ## Score the planner on the golden question set (fails below 90%)
 	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent-eval
+
+# --- AWS demo (compute: VPC + EKS + serving layer) ---------------------------------
+# About $0.20-0.25/hour while up; nothing but the foundation while down.
+
+aws-plan: ## Review what aws-up will create (compute stack plan)
+	AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=infra/terraform/envs/$(TF_ENV)/compute init -input=false \
+		-backend-config="bucket=gridpulse-tfstate-$$(aws sts get-caller-identity --profile $(AWS_PROFILE) --query Account --output text)" >/dev/null
+	AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=infra/terraform/envs/$(TF_ENV)/compute plan -input=false
+
+aws-up: ## Create the demo on EKS, deploy, smoke test (~15-20 min)
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/aws-up.sh
+
+aws-down: ## Destroy the demo compute and verify nothing billable is left
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/aws-down.sh
+
+aws-status: ## Is the demo up? (cluster, nodes, pods)
+	@aws eks list-clusters --profile $(AWS_PROFILE) --query clusters --output text | grep -q gridpulse \
+		&& kubectl --context gridpulse-$(TF_ENV) -n gridpulse get pods -o wide \
+		|| echo "AWS demo is down (no EKS cluster)."
+
+aws-ui: ## Open the demo UI through a port-forward: http://localhost:8501
+	kubectl --context gridpulse-$(TF_ENV) -n gridpulse port-forward svc/agent-ui 8501:8501
 

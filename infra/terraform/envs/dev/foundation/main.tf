@@ -20,3 +20,8 @@ module "budgets" {
   alert_email       = var.budget_alert_email
   monthly_limit_usd = var.monthly_budget_usd
 }
+
+module "ecr" {
+  source     = "../../../modules/ecr"
+  components = ["ingestion", "transform", "semantic", "agent"]
+}

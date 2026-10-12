@@ -12,3 +12,8 @@ output "athena_workgroups" {
   description = "Athena workgroups."
   value       = module.catalog.workgroup_names
 }
+
+output "ecr_repositories" {
+  description = "ECR repository URL per component."
+  value       = module.ecr.repository_urls
+}
