@@ -7,7 +7,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	up-lake up down ps logs reset prune trino extract extract-sample \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
-	semantic-manifest semantic-api mf bedrock-check
+	semantic-manifest semantic-api mf bedrock-check agent-api agent-ui agent-eval
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -171,4 +171,17 @@ semantic-api: semantic-manifest ## Serve the semantic API at http://localhost:80
 
 mf: ## Run MetricFlow directly, e.g. make mf ARGS="query --metrics demand --group-by balancing_authority"
 	cd transform && DBT_PROFILES_DIR=. AWS_PROFILE=$(AWS_PROFILE) uv run --quiet mf $(ARGS)
+
+# --- Assistant (agent/) ---------------------------------------------------------
+# Needs the semantic API running (make semantic-api) and a model provider:
+# GRIDPULSE_AGENT_PROVIDER=bedrock (default; AWS login + TODO #7) | anthropic | ollama
+
+agent-api: ## Serve the assistant at http://localhost:8091/docs
+	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent
+
+agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
+	uv run streamlit run agent/src/gridpulse_agent/ui.py
+
+agent-eval: ## Score the planner on the golden question set (fails below 90%)
+	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent-eval
 

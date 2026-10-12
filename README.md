@@ -22,6 +22,9 @@ make dbt-build         # build and test the dbt models (staging → intermediate
 make dbt-docs          # browse model docs and lineage at http://localhost:8081
 make semantic-api      # governed metrics over HTTP: http://localhost:8090/docs
 make mf ARGS="query --metrics demand --group-by balancing_authority"   # MetricFlow CLI
+make agent-api         # the assistant (LangGraph + Claude): http://localhost:8091/docs
+make agent-ui          # Streamlit demo UI
+make agent-eval        # golden-set accuracy (target ≥ 90%)
 make down              # stop (keeps data); `make reset` wipes it
 ```
 

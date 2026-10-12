@@ -14,6 +14,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY ingestion/pyproject.toml ingestion/pyproject.toml
 COPY semantic/pyproject.toml semantic/pyproject.toml
+COPY agent/pyproject.toml agent/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --package gridpulse-ingestion --no-install-workspace
 

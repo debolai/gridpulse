@@ -1,0 +1,140 @@
+# Golden questions for the planner. Scored on the planned metric request, not on answer text.
+# "today" pins relative dates ("last month") so expectations never drift.
+# Windows are half-open [start, end). end_tolerance_days allows "through today" vs "up to today".
+today: 2026-10-12
+
+cases:
+  - id: total-demand-one-ba-month
+    question: What was PJM's total demand in September 2026?
+    expect:
+      metrics: [demand]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: highest-peak-by-ba
+    question: Which balancing authority had the highest peak demand in July 2026?
+    expect:
+      metrics: [peak_demand]
+      group_by: [balancing_authority]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: forecast-accuracy-name-to-code-relative-month
+    question: How accurate was ERCOT's day-ahead load forecast last month?
+    expect:
+      metrics: [forecast_error_mape]
+      filters: [{dimension: balancing_authority, values: [ERCO]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: forecast-bias-direction
+    question: Did MISO over- or under-forecast demand in August 2026?
+    expect:
+      metrics: [forecast_bias]
+      filters: [{dimension: balancing_authority, values: [MISO]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: completeness-by-ba-this-month
+    question: How complete is the demand data for each balancing authority this month?
+    expect:
+      metrics: [data_completeness]
+      group_by: [balancing_authority]
+      start: 2026-10-01
+      end: 2026-10-13
+      end_tolerance_days: 1
+
+  - id: daily-series
+    question: Show daily demand for California ISO in the first week of August 2026.
+    expect:
+      metrics: [demand]
+      group_by: [metric_time__day]
+      filters: [{dimension: balancing_authority, values: [CISO]}]
+      start: 2026-08-01
+      end: 2026-08-08
+
+  - id: by-interconnection-quarter
+    question: Compare total demand by interconnection for Q3 2026.
+    expect:
+      metrics: [demand]
+      group_by: [balancing_authority__interconnection]
+      start: 2026-07-01
+      end: 2026-10-01
+
+  - id: local-hour-load-shape
+    question: At what local hour of the day does PJM's demand peak, based on July 2026?
+    expect:
+      metrics: [demand]
+      group_by: [grid_hour__hour_local]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: month-to-date-cumulative
+    question: Show ISNE's month-to-date demand for each day of October 2026 so far.
+    expect:
+      metrics: [demand_month_to_date]
+      group_by: [metric_time__day]
+      filters: [{dimension: balancing_authority, values: [ISNE]}]
+      start: 2026-10-01
+      end: 2026-10-13
+      end_tolerance_days: 1
+
+  - id: peak-filtered-by-dimension
+    question: What was the peak hourly demand of each Western interconnection BA in August 2026?
+    expect:
+      metrics: [peak_demand]
+      group_by: [balancing_authority]
+      filters: [{dimension: balancing_authority__interconnection, values: [Western]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: worst-forecast-ranking
+    question: Which BA had the worst day-ahead forecast error in September 2026?
+    expect:
+      metrics: [forecast_error_mape]
+      group_by: [balancing_authority]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: synonym-load-yesterday
+    question: What was the total electricity load across all regions yesterday?
+    expect:
+      metrics: [demand]
+      start: 2026-10-11
+      end: 2026-10-12
+
+  - id: monthly-trend
+    question: Monthly demand for MISO from July through September 2026.
+    expect:
+      metrics: [demand]
+      group_by: [metric_time__month]
+      filters: [{dimension: balancing_authority, values: [MISO]}]
+      start: 2026-07-01
+      end: 2026-10-01
+
+  - id: gaps-last-7-days
+    question: How much demand data is missing for ERCOT over the last 7 days?
+    expect:
+      metrics: [data_completeness]
+      filters: [{dimension: balancing_authority, values: [ERCO]}]
+      start: 2026-10-05
+      end: 2026-10-12
+      end_tolerance_days: 1
+
+  - id: bias-by-interconnection
+    question: What was the forecast bias by interconnection in August 2026?
+    expect:
+      metrics: [forecast_bias]
+      group_by: [balancing_authority__interconnection]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: definition-route
+    question: What does the forecast error metric measure and how is it calculated?
+    route: definition
+
+  - id: out-of-scope-route
+    question: What was the wholesale electricity price in PJM yesterday?
+    route: out_of_scope

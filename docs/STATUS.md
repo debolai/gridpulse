@@ -8,16 +8,15 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A5 — Minimal agent (LangGraph over the semantic API). Needs TODO #7 (Bedrock access) before live LLM calls; graph, validation and evals can start offline.
+- Phase A5 — Minimal agent: offline parts built and tested; live evaluation waits on TODO #7 (Anthropic use-case form in Bedrock)
 
 ## Next up
-1. A5: `agent/` package: LangGraph graph (route → plan → validate → execute → answer → ground-check) calling the semantic API
-2. A5: deterministic validator (allow-list from `GET /metrics?agent_only=true`, row limit, window limits, block summing peak_demand across BAs)
-3. A5: Bedrock client (small model routes, larger model plans/answers), FastAPI `/ask`, Streamlit UI
-4. A5: 15-question golden set scored on the planned metric request; ground-check test with an injected wrong number
+1. When TODO #7 lands: `make bedrock-check`, then `make agent-eval` (target ≥ 90%), tune prompts if needed, and a live smoke test through `make agent-api` + `make agent-ui`
+2. A6: minimal Airflow (LocalExecutor) running eia_hourly → dbt build → cache refresh, plus catchup_gap
+3. A6: container images for semantic API and agent; Terraform compute (VPC, EKS, RDS, ECR, IAM, OIDC); `make aws-up` / `make aws-down`
 
 ## Blockers
-- TODO #7 (Bedrock access) blocks live LLM calls in A5.
+- TODO #7 (Anthropic use-case form in Bedrock) blocks live LLM calls: `make bedrock-check` shows 4.x models need the form; 5.x models are not yet enabled for this new account.
 - TODO #10 (renew AWS SSO login): Python/boto3 rejects the current SSO token; the CLI's cached role credentials work until ~03:37 UTC. Needed for further Athena work.
 
 ## Phase A — MVP slice
@@ -39,6 +38,9 @@ Repo: https://github.com/debolai/gridpulse
   - Built: time spines (hourly/daily), `fct_grid_coverage_hourly`, metrics demand, peak_demand, forecast_error_mape, forecast_bias, data_completeness, demand_month_to_date; semantic API (`make semantic-api`, /health /metrics /compile /query, cache keyed by dbt invocation).
   - Later (A6): semantic API container image.
 - [ ] **A5 Minimal agent** — done when eval accuracy ≥ 90% and an injected wrong number is caught
+  - [x] Injected wrong number is caught — 2026-10-12. `test_ground_check.py` + `test_graph.py`: a wrong figure triggers one rewrite with feedback, a persistent one falls back to the raw table; computed (summed) numbers and wrong rounding are rejected.
+  - [x] Offline build — 2026-10-12: LangGraph graph (route → plan → validate → execute → answer → ground-check, ≤2 replans on validator/API errors), provider switch (bedrock | anthropic | ollama), FastAPI `/ask` with optional bearer token, Streamlit UI, 17-case golden set + scorer, contract test against the semantic API. 30 agent unit tests (74 total) pass.
+  - [ ] Eval accuracy ≥ 90% — blocked on TODO #7.
 - [ ] **A6 Scheduling + AWS** — done when `make aws-down && make aws-up` restores a demo that answers the smoke question
 - [ ] **MVP checkpoint** — README MVP section, demo GIF, "still to come" list
 
@@ -76,3 +78,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — TODO #6 done: AWS account with IAM Identity Center admin, SSO profile `gridpulse` (us-east-1), root MFA on. Waiting on budget email (#9).
 - 2026-10-12 — A3 complete: AWS foundation applied (buckets, Glue, Athena workgroups, $50 budget); sample loaded via Glue; dbt builds on Athena with identical results to Trino. Next: A4 MetricFlow spike on both engines.
 - 2026-10-12 — A4 complete: MetricFlow spike passed on Trino and Athena (ADR-0002); 6 governed metrics; semantic API with SQL ground-truth tests. Next: A5 agent.
+- 2026-10-12 — A5 offline parts complete (graph, validator, ground-check, API, UI, golden set); live eval waits on the Bedrock use-case form (TODO #7). Next: A6 while waiting.

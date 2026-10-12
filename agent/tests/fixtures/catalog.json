@@ -1,0 +1,131 @@
+[
+ {
+  "name": "data_completeness",
+  "label": "Data completeness (demand, %)",
+  "description": "Share of expected BA-hours that have a reported demand value, as a fraction from 0 to 1. Expected hours run from each BA's first report to the latest hour with demand. Synonyms: coverage, missing data, gaps.",
+  "type": "ratio",
+  "agent": true,
+  "unit": "fraction",
+  "additive": false,
+  "synonyms": [
+   "coverage",
+   "gaps",
+   "missing data"
+  ],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "coverage_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "demand",
+  "label": "Demand (MWh)",
+  "description": "Total electricity demand (load) in MWh: the sum of hourly demand over the selected hours and balancing authorities. Hours the BA did not report are excluded. Synonyms: load, consumption, usage.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [
+   "load",
+   "consumption",
+   "usage"
+  ],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "demand_month_to_date",
+  "label": "Demand, month to date (MWh)",
+  "description": "Cumulative demand from the start of each month.",
+  "type": "cumulative",
+  "agent": true,
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "forecast_bias",
+  "label": "Day-ahead forecast bias (MWh)",
+  "description": "Average of (forecast - actual) demand per hour, over hours where both were reported. Positive means the operator over-forecast; negative means it under-forecast.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MWh",
+  "additive": false,
+  "synonyms": [
+   "over-forecast",
+   "under-forecast"
+  ],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "forecast_error_mape",
+  "label": "Day-ahead forecast error (MAPE, %)",
+  "description": "Mean absolute percentage error of the BA's day-ahead demand forecast: average of |actual - forecast| / actual x 100 over hours where actual demand > 0 and both values were reported. Lower is better.",
+  "type": "simple",
+  "agent": true,
+  "unit": "percent",
+  "additive": false,
+  "synonyms": [
+   "forecast accuracy",
+   "forecast miss"
+  ],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "peak_demand",
+  "label": "Peak hourly demand (MW)",
+  "description": "Highest single-hour demand of one balancing authority in the period (MWh in one hour = average MW). NOT a system peak: when grouped across several BAs it returns the largest individual BA-hour, not the combined peak. For a region's combined peak use coincident_peak_demand (added later).",
+  "type": "simple",
+  "agent": true,
+  "unit": "MW",
+  "additive": false,
+  "synonyms": [
+   "max load",
+   "peak load"
+  ],
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ }
+]
