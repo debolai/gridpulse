@@ -13,10 +13,9 @@ Repo: https://github.com/debolai/gridpulse
 ## Next up
 1. A1: `local/compose.yaml` with profiles `lake`, `orch`, `app`, memory limits, `make up-*`/`down`/`reset`/`prune`
 2. A1: MinIO + Lakekeeper + Trino bootstrap; prove create/read of an Iceberg table
-3. A2: `region-data` extractor (needs EIA key — TODO #4)
+3. A2: `region-data` extractor (EIA key ready)
 
 ## Blockers
-- TODO #4 (EIA API key) blocks A2 live pulls. Fixture-based work can proceed.
 - TODO #6 (AWS credentials: none configured on this Mac yet) blocks the A3 `aws` target and A6.
 
 ## Phase A — MVP slice
@@ -45,6 +44,10 @@ Repo: https://github.com/debolai/gridpulse
 ## Deferred / later
 - (empty — park scope creep here instead of starting it)
 
+## Findings to fold into the build
+- 2026-10-12: `region-data` returns day-ahead forecast (`DF`) rows for future hours (latest PJM row was a DF for 2026-10-13T04 UTC). Freshness checks must use the latest *demand* (`D`) hour, not max(`period`). Values confirmed as strings.
+
 ## Session log
 - 2026-10-12 — Plan agreed (offline local mode, MVP first). A0 scaffolding created; lint and tests pass locally. Next: GitHub repo, then A1.
 - 2026-10-12 — TODO #1, #2, #3, #5 done (#6 still open: no AWS credentials found). Pushed to GitHub; CI green. A0 complete. Next: A1.
+- 2026-10-12 — TODO #4 done: EIA key verified with a live call (HTTP 200).
