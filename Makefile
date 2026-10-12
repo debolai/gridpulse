@@ -7,7 +7,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	up-lake up down ps logs reset prune trino extract extract-sample \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
-	semantic-manifest semantic-api mf
+	semantic-manifest semantic-api mf bedrock-check
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -128,6 +128,14 @@ TF := AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR)
 
 aws-whoami: ## Show which AWS account and role you're using
 	@aws sts get-caller-identity --profile $(AWS_PROFILE) --query Arn --output text
+
+BEDROCK_CHECK_MODEL ?= us.anthropic.claude-haiku-5-5
+
+bedrock-check: ## Send Claude on Bedrock one tiny message (prints "ready" when access works)
+	@aws bedrock-runtime converse --profile $(AWS_PROFILE) --region us-east-1 \
+		--model-id $(BEDROCK_CHECK_MODEL) \
+		--messages '[{"role":"user","content":[{"text":"Reply with the single word: ready"}]}]' \
+		--inference-config '{"maxTokens":5}' --query 'output.message.content[0].text' --output text
 
 tf-bootstrap: ## One-time: create the Terraform state bucket (idempotent)
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/bootstrap-state.sh
