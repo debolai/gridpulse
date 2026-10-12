@@ -129,13 +129,21 @@ TF := AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR)
 aws-whoami: ## Show which AWS account and role you're using
 	@aws sts get-caller-identity --profile $(AWS_PROFILE) --query Arn --output text
 
-BEDROCK_CHECK_MODEL ?= us.anthropic.claude-haiku-5-5
+BEDROCK_CHECK_MODELS ?= us.anthropic.claude-haiku-5-5 us.anthropic.claude-sonnet-5-5 \
+	us.anthropic.claude-haiku-4-5-20251001-v1:0 us.anthropic.claude-sonnet-4-6
 
-bedrock-check: ## Send Claude on Bedrock one tiny message (prints "ready" when access works)
-	@aws bedrock-runtime converse --profile $(AWS_PROFILE) --region us-east-1 \
-		--model-id $(BEDROCK_CHECK_MODEL) \
-		--messages '[{"role":"user","content":[{"text":"Reply with the single word: ready"}]}]' \
-		--inference-config '{"maxTokens":5}' --query 'output.message.content[0].text' --output text
+bedrock-check: ## Send each Claude model on Bedrock one tiny message and report which ones work
+	@for m in $(BEDROCK_CHECK_MODELS); do \
+		out=$$(aws bedrock-runtime converse --profile $(AWS_PROFILE) --region us-east-1 --model-id $$m \
+			--messages '[{"role":"user","content":[{"text":"Reply with the single word: ready"}]}]' \
+			--inference-config '{"maxTokens":5}' --query 'output.message.content[0].text' --output text 2>&1); \
+		case "$$out" in \
+			*use\ case\ details*) msg="needs the Anthropic use-case form (TODO #7)";; \
+			*not\ available\ for\ this\ account*) msg="not enabled for this account yet";; \
+			*being\ verified*) msg="account still being verified";; \
+			*ERROR*) msg="error: $$(echo "$$out" | tail -1 | cut -c1-90)";; \
+			*) msg="OK ($$out)";; \
+		esac; printf '  %-45s %s\n' "$$m" "$$msg"; done
 
 tf-bootstrap: ## One-time: create the Terraform state bucket (idempotent)
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/bootstrap-state.sh
