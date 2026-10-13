@@ -54,11 +54,19 @@ resource "aws_iam_role_policy_attachment" "ci_read_only" {
 }
 
 data "aws_iam_policy_document" "ci" {
-  # ReadOnlyAccess includes reading parameter values; nothing in CI needs secrets.
+  # ReadOnlyAccess includes reading parameter values; nothing in CI needs this account's
+  # secrets. AWS's public parameters (/aws/service/..., e.g. the EKS node AMI the compute plan
+  # looks up) have no account in their ARN, so they stay readable.
+  statement {
+    sid       = "NoOwnParameters"
+    effect    = "Deny"
+    actions   = ["ssm:GetParameter*"]
+    resources = ["arn:aws:ssm:*:${local.account}:parameter/*"]
+  }
   statement {
     sid       = "NoSecrets"
     effect    = "Deny"
-    actions   = ["ssm:GetParameter*", "secretsmanager:GetSecretValue", "kms:Decrypt"]
+    actions   = ["secretsmanager:GetSecretValue", "kms:Decrypt"]
     resources = ["*"]
   }
   statement {
