@@ -26,7 +26,11 @@ with observations as (
 {% if is_incremental() %}
 touched as (
 
-    select distinct route, ba_code, item_code, period_utc
+    select distinct
+        route,
+        ba_code,
+        item_code,
+        period_utc
     from observations
     where ingested_at_utc > {{ incremental_watermark('last_ingested_at_utc') }}
 

@@ -37,14 +37,35 @@ jobs:
 
   images:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build extractor image
-        run: docker buildx build --load -f ingestion/Dockerfile -t gridpulse/ingestion:ci .
-      - name: Smoke test the CLI
-        run: docker run --rm gridpulse/ingestion:ci --help
+      # One image per component (blueprint), each with a smoke test. Layers are cached between
+      # runs in the GitHub Actions cache, one scope per image.
+      - name: Build images
+        run: |
+          build() {  # build <component> [extra args]
+            docker buildx build --load -f "$1/Dockerfile" -t "gridpulse/$1:ci" \
+              --cache-from "type=gha,scope=$1" --cache-to "type=gha,mode=max,scope=$1" "${@:2}" .
+          }
+          build ingestion
+          build transform
+          build semantic
+          build agent
+          build orchestration --build-arg TRANSFORM_IMAGE=gridpulse/transform:ci
+      - name: Smoke test the images
+        run: |
+          docker run --rm gridpulse/ingestion:ci --help
+          docker run --rm --entrypoint dbt gridpulse/transform:ci --version
+          docker run --rm --entrypoint python gridpulse/semantic:ci -c "import gridpulse_semantic.app"
+          docker run --rm --entrypoint gridpulse-agent-eval gridpulse/agent:ci --help
+      - name: DAG integrity on both runtimes (imports, retries, timeouts, alerts, EIA pool)
+        run: |
+          for rt in docker kubernetes; do
+            docker run --rm -e GRIDPULSE_TASK_RUNTIME=$rt --entrypoint python \
+              gridpulse/orchestration:ci /opt/airflow/tests/dag_integrity.py
+          done
 
   terraform:
     runs-on: ubuntu-latest

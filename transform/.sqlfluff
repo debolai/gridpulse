@@ -1,0 +1,34 @@
+# SQL lint for the dbt models (blueprint: sqlfluff, Athena dialect). The Jinja templater with
+# dbt builtins renders models without a warehouse connection, so CI needs no database; the
+# project's own macros get stand-ins below that render the default (Trino) SQL.
+[sqlfluff]
+dialect = athena
+templater = jinja
+max_line_length = 100
+# Kept: rules that catch bugs and inconsistency. Excluded: layout this project does on purpose
+# (blank lines inside CTE parentheses, no trailing newline check, select-column order) and
+# ST09, which would rewrite `spine.date_hour >= first_hour` as `first_hour <= spine.date_hour`.
+exclude_rules = LT08, LT12, ST06, ST09
+
+[sqlfluff:indentation]
+# Our joins: `on` indented under the join, its `and` lines at the same level as `on`.
+indented_on_contents = False
+# `{% if is_incremental() %}` blocks don't add a level of indentation to the SQL inside them.
+template_blocks_indent = False
+
+[sqlfluff:templater:jinja]
+apply_dbt_builtins = True
+library_path = sqlfluff_libs
+
+[sqlfluff:templater:jinja:macros]
+timestamp_type = {% macro timestamp_type() %}timestamp(6){% endmacro %}
+to_utc_timestamp = {% macro to_utc_timestamp(c) %}cast({{ c }} at time zone 'UTC' as timestamp(6)){% endmacro %}
+utc_to_local = {% macro utc_to_local(c, tz) %}cast(at_timezone(with_timezone({{ c }}, 'UTC'), {{ tz }}) as timestamp(6)){% endmacro %}
+incremental_watermark = {% macro incremental_watermark(c) %}(select max({{ c }}) from {{ this }}){% endmacro %}
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = lower
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower

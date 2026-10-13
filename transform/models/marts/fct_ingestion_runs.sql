@@ -8,7 +8,8 @@ select
     cast(status as varchar) as status,
     cast(window_start_utc as {{ timestamp_type() }}) as window_start_utc,
     cast(window_end_utc as {{ timestamp_type() }}) as window_end_utc,
-    cast(scope as varchar) as scope,
+    -- scope and error are SQL keywords, but they are the contract's column names.
+    cast(scope as varchar) as scope,  -- noqa: RF04
     cast(pages as bigint) as pages,
     cast(rows_expected as bigint) as rows_expected,
     cast(rows_received as bigint) as rows_received,
@@ -22,6 +23,6 @@ select
         false
     ) as is_complete,
     duration_seconds,
-    cast(error as varchar) as error,
+    cast(error as varchar) as error,  -- noqa: RF04
     cast(details as varchar) as details
 from {{ ref('stg_pipeline__ingestion_runs') }}

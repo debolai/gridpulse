@@ -21,7 +21,10 @@ with readings as (
 
 bounds as (
 
-    select station_id, min(period_utc) as first_hour, max(period_utc) as last_hour
+    select
+        station_id,
+        min(period_utc) as first_hour,
+        max(period_utc) as last_hour
     from readings
     group by station_id
 
@@ -29,7 +32,9 @@ bounds as (
 
 spine as (
 
-    select bounds.station_id, cast(time_spine.date_hour as {{ timestamp_type() }}) as period_utc
+    select
+        bounds.station_id,
+        cast(time_spine.date_hour as {{ timestamp_type() }}) as period_utc
     from bounds
     inner join {{ ref('time_spine_hourly') }} as time_spine
         on time_spine.date_hour >= bounds.first_hour
@@ -81,11 +86,13 @@ interpolated as (
 
     select
         *,
-        temperature_c is null
+        (
+            temperature_c is null
             and previous_hour is not null
             and next_hour is not null
             and date_diff('hour', previous_hour, next_hour) - 1
-                <= {{ var('weather_max_gap_hours') }} as is_interpolatable
+            <= {{ var('weather_max_gap_hours') }}
+        ) as is_interpolatable
     from filled
 
 )

@@ -17,6 +17,7 @@ dev = [
     "respx",
     "trino",
     "ruff",
+    "sqlfluff",
     "yamllint",
 ]
 

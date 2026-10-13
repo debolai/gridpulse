@@ -17,10 +17,15 @@ setup: ## Install pinned dev tools and git hooks
 	uv sync --locked
 	uv run pre-commit install
 
-lint: ## Run all linters (no changes made)
+HADOLINT := docker run --rm -i \
+	hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e
+
+lint: ## Run all linters (no changes made): Python, YAML, dbt SQL, Dockerfiles
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run yamllint --strict .
+	cd transform && uv run sqlfluff lint models snapshots
+	@for f in */Dockerfile; do $(HADOLINT) < $$f || { echo "hadolint: $$f"; exit 1; }; done
 
 # gitleaks reads text on stdin, so it never runs git inside the container (where git can fail
 # and gitleaks would then report "no leaks" instead of an error).
@@ -73,12 +78,13 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 
 up: up-orch ## Start everything built so far
 
-images: ## Build the local images: the tasks Airflow launches (extractor, dbt, agent) and Airflow
+images: ## Build the local images: extractor, dbt, semantic API, agent and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
 	docker build -q -f transform/Dockerfile -t gridpulse/transform:local . >/dev/null
+	docker build -q -f semantic/Dockerfile -t gridpulse/semantic:local . >/dev/null
 	docker build -q -f agent/Dockerfile -t gridpulse/agent:local . >/dev/null
 	docker build -q -f orchestration/Dockerfile -t gridpulse/orchestration:local . >/dev/null
-	@echo "built gridpulse/{ingestion,transform,agent,orchestration}:local"
+	@echo "built gridpulse/{ingestion,transform,semantic,agent,orchestration}:local"
 
 dag-check: ## DAG integrity on both runtimes: imports, no catchup, retries, timeouts, EIA pool
 	@for rt in docker kubernetes; do \
