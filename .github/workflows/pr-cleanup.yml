@@ -1,0 +1,32 @@
+name: pr-cleanup
+
+# When a pull request closes (merged or not), drop what its slim-CI run built on Athena:
+# the ci_pr_<n>_* Glue databases and their data in S3.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  drop-ci-schemas:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked && make dbt-deps
+      - name: Drop ci_pr_${{ github.event.number }}_* databases and data
+        run: infra/scripts/ci-cleanup.sh ci_pr_${{ github.event.number }}

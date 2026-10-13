@@ -1,0 +1,21 @@
+# checkov runs on every PR (ci.yml). These checks are skipped on purpose; anything else fails CI.
+framework:
+  - terraform
+skip-check:
+  # False positive: the lake module has aws_s3_bucket_public_access_block for every bucket, but
+  # checkov can't link resources created with for_each.
+  - CKV2_AWS_6
+  # Encryption: SSE-S3 (AES256) on every bucket and AES256 on ECR. KMS keys add cost and key
+  # management for no gain on public EIA/NOAA data.
+  - CKV_AWS_145
+  - CKV_AWS_136
+  # Versioning only on the raw bucket: the lake is rebuilt from raw by dbt, Athena results are
+  # temporary (lifecycle-expired).
+  - CKV_AWS_21
+  # Dev cost: no cross-region replication, no server access logs, no S3 event notifications.
+  - CKV_AWS_144
+  - CKV_AWS_18
+  - CKV2_AWS_62
+  # Registry modules (terraform-aws-modules vpc/eks) are pinned to exact versions, not commit
+  # hashes; the registry serves immutable versions.
+  - CKV_TF_1

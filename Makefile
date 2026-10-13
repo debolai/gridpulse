@@ -233,6 +233,15 @@ dbt-test: ## Run dbt data and unit tests only
 dbt-docs: ## Generate and serve dbt docs at http://localhost:8081
 	$(DBT) docs generate && $(DBT) docs serve --port 8081
 
+TFLINT := docker run --rm -v $(CURDIR)/infra/terraform:/data -w /data \
+	ghcr.io/terraform-linters/tflint:v0.55.1@sha256:4136a6ec3d6659551f2b8f63be8bd413c8c1d842506a5597a26bf4e8bc1eac16
+CHECKOV := docker run --rm -v $(CURDIR)/infra/terraform:/tf -w /tf \
+	bridgecrew/checkov:3.2.450@sha256:f14993a3f01ad7f936add90c2169232e47370a881e5a410a0a9d34c4542b459d
+
+tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reasons: infra/terraform/.checkov.yaml)
+	$(TFLINT) --recursive
+	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet
+
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'
 

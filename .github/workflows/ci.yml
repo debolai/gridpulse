@@ -108,7 +108,110 @@ jobs:
         with:
           terraform_version: 1.16.4
       - run: terraform fmt -recursive -check infra/terraform
-      - name: validate (no backend, no AWS access needed)
+      - name: validate both stacks (no backend, no AWS access needed)
         run: |
-          terraform -chdir=infra/terraform/envs/dev/foundation init -backend=false -input=false
-          terraform -chdir=infra/terraform/envs/dev/foundation validate
+          for stack in foundation compute; do
+            terraform -chdir=infra/terraform/envs/dev/$stack init -backend=false -input=false
+            terraform -chdir=infra/terraform/envs/dev/$stack validate
+          done
+      - name: tflint and checkov
+        run: make tf-lint
+
+  # Which parts of the repo a pull request touches, so AWS jobs only run when they matter.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      terraform: ${{ steps.diff.outputs.terraform }}
+      dbt: ${{ steps.diff.outputs.dbt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          touched() { grep -qE "$1" <<<"$files" && echo true || echo false; }
+          echo "terraform=$(touched '^infra/terraform/|^infra/scripts/ci-plan.sh')" >> "$GITHUB_OUTPUT"
+          echo "dbt=$(touched '^transform/')" >> "$GITHUB_OUTPUT"
+
+  # `terraform plan` of both dev stacks with the read-only CI role, posted on the PR (one
+  # comment, updated on every push). Forks get no OIDC token, so this runs for this repo only.
+  terraform-plan:
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+      - name: Plan both stacks (read-only, no state lock)
+        run: infra/scripts/ci-plan.sh plan.md
+      - name: Post or update the plan comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.number }}
+        run: |
+          [ -f plan.md ] || exit 0
+          id=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" --paginate \
+            -q '.[] | select(.body | startswith("<!-- gridpulse-terraform-plan -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$id" -F body=@plan.md >/dev/null
+          else
+            gh pr comment "$PR" --body-file plan.md
+          fi
+          cat plan.md >> "$GITHUB_STEP_SUMMARY"
+
+  # dbt slim CI on Athena: build only the models this PR changed and everything downstream,
+  # into ci_pr_<n>_* databases; unchanged parents are read from the real tables (deferral to
+  # the manifest of main). pr-cleanup.yml drops the databases when the PR closes.
+  slim-ci:
+    needs: changes
+    if: needs.changes.outputs.dbt == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DBT_TARGET: aws
+      GRIDPULSE_SCHEMA_PREFIX: ci_pr_${{ github.event.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Manifest of main (what "modified" is compared with)
+        run: aws s3 cp --only-show-errors s3://gridpulse-dev-lake/ci/dbt-state/manifest.json state/manifest.json
+      - name: Build modified models and their children into ci_pr_${{ github.event.number }}_*
+        env:
+          DBT_PROJECT_DIR: transform
+          DBT_PROFILES_DIR: transform
+        run: |
+          make dbt-deps
+          state="$GITHUB_WORKSPACE/state"
+          {
+            echo "### dbt slim CI: built into ci_pr_${{ github.event.number }}_*"
+            echo '```'
+            uv run --quiet dbt ls --select state:modified+ --state "$state" --resource-type model --output name
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          uv run dbt build --select state:modified+ --defer --state "$state"
