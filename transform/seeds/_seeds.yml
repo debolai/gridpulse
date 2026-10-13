@@ -1,0 +1,57 @@
+version: 2
+
+seeds:
+  - name: reconciliation_exceptions
+    description: >
+      BAs excused from a reconciliation test, each with the measured reason and the date it
+      was observed. An exception is a documented source-data problem, never a way to make a
+      test pass; remove the row once the check passes for that BA.
+    columns:
+      - name: check_name
+        description: fuel_mix_to_net_generation or interchange_to_total_interchange.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["fuel_mix_to_net_generation", "interchange_to_total_interchange"]
+      - name: ba_code
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('ba_reference')
+                field: ba_code
+      - name: reason
+        data_tests: [not_null]
+      - name: observed_on
+        data_tests: [not_null]
+
+  - name: ba_weather_stations
+    description: >
+      Weather stations that stand for each balancing authority's load: the 3-4 largest metro
+      areas the BA serves, one GHCNh airport station each, weighted by metro population. There
+      is no official mapping; this is a documented modelling choice to challenge and extend.
+      Stations checked against NOAA's ghcnh-station-list.csv (2026-09-16). Populations: Census
+      Bureau Vintage 2025 CBSA estimates (POPESTIMATE2025,
+      https://www2.census.gov/programs-surveys/popest/datasets/2020-2025/metro/totals/cbsa-est2025-alldata.csv).
+      Known simplifications: a metro can straddle BAs (New York-Newark includes PJM's New
+      Jersey; Los Angeles includes LADWP), and one airport stands for a whole metro. Covers the
+      six sample BAs; extend before loading more BAs.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, station_id]
+    columns:
+      - name: ba_code
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('ba_reference')
+                field: ba_code
+      - name: station_id
+        description: GHCNh station id (USW000 + WBAN for U.S. airports).
+        data_tests: [not_null]
+      - name: metro_population
+        description: Census Vintage 2025 estimate for the metro area (CBSA) the station stands for.
+        data_tests: [not_null]

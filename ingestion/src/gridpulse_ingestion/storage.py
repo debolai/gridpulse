@@ -13,7 +13,7 @@ from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
 from pyiceberg.transforms import MonthTransform
-from pyiceberg.types import NestedField, StringType, TimestamptzType
+from pyiceberg.types import DoubleType, LongType, NestedField, StringType, TimestamptzType
 
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.routes import Route
@@ -98,9 +98,78 @@ class RawStore:
             ContentType="application/json",
         )
 
+    def iter_manifests(self):
+        """Every run manifest in the raw bucket (for backfilling ingestion_runs)."""
+        paginator = self._s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix="_manifests/"):
+            for obj in page.get("Contents", []):
+                body = self._s3.get_object(Bucket=self.bucket, Key=obj["Key"])["Body"].read()
+                yield json.loads(body)
+
     def put_manifest(self, key: str, manifest: dict) -> None:
         body = json.dumps(manifest, indent=2, sort_keys=True, default=str).encode()
         self._s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType="application/json")
+
+
+RUNS_TABLE = "ingestion_runs"
+_RUN_COLUMNS = [
+    ("run_id", StringType(), True),
+    ("route", StringType(), True),
+    ("started_at", TimestamptzType(), True),
+    ("status", StringType(), True),
+    ("window_start_utc", TimestamptzType(), False),
+    ("window_end_utc", TimestamptzType(), False),
+    ("scope", StringType(), False),
+    ("pages", LongType(), False),
+    ("rows_expected", LongType(), False),
+    ("rows_received", LongType(), False),
+    ("rows_appended", LongType(), False),
+    ("duration_seconds", DoubleType(), False),
+    ("error", StringType(), False),
+    ("details", StringType(), False),
+    ("_ingested_at", TimestamptzType(), True),
+]
+
+
+def runs_table_schema() -> Schema:
+    """One row per extraction attempt, mirroring the S3 run manifest."""
+    return Schema(
+        *(
+            NestedField(field_id=i, name=name, field_type=kind, required=required)
+            for i, (name, kind, required) in enumerate(_RUN_COLUMNS, start=1)
+        )
+    )
+
+
+def run_record(manifest: dict, appended_at: datetime) -> dict:
+    """Flatten a run manifest into an ingestion_runs row. Fields without a column (warnings,
+    unknown fields, missing stations, ...) go to `details` as JSON, so nothing is lost."""
+
+    def ts(value):
+        return datetime.fromisoformat(value) if isinstance(value, str) else value
+
+    columns = {name for name, _, _ in _RUN_COLUMNS}
+    scope = manifest.get("facets", manifest.get("stations"))
+    details = {
+        k: v for k, v in manifest.items() if k not in columns and k not in ("facets", "stations")
+    }
+    return {
+        "run_id": manifest["run_id"],
+        "route": manifest["route"],
+        "started_at": ts(manifest["started_at"]),
+        "status": manifest["status"],
+        "window_start_utc": ts(manifest.get("window_start_utc")),
+        "window_end_utc": ts(manifest.get("window_end_utc")),
+        "scope": json.dumps(scope) if scope is not None else None,
+        "pages": manifest.get("pages"),
+        "rows_expected": manifest.get("rows_expected"),
+        "rows_received": manifest.get("rows_received"),
+        "rows_appended": manifest.get("rows_appended"),
+        "duration_seconds": manifest.get("duration_seconds"),
+        "error": manifest.get("error"),
+        "details": json.dumps(details, sort_keys=True, default=str) if details else None,
+        "_ingested_at": appended_at,
+    }
 
 
 def raw_table_schema(route: Route) -> Schema:
@@ -122,6 +191,34 @@ def raw_table_schema(route: Route) -> Schema:
 
 def raw_table_name(route: Route) -> str:
     return "eia_" + route.name.replace("-", "_")
+
+
+NOAA_TABLE = "noaa_ghcnh_observations"
+
+
+def noaa_table_schema() -> Schema:
+    """GHCNh observations as read (one row per station report), plus pipeline metadata."""
+    columns = [
+        ("station_id", StringType(), True),
+        ("station_name", StringType(), False),
+        ("observed_at_utc", TimestamptzType(), True),
+        ("report_type", StringType(), False),
+        ("temperature_c", DoubleType(), False),
+        ("temperature_quality_code", StringType(), False),
+        ("dew_point_c", DoubleType(), False),
+        ("wind_speed_ms", DoubleType(), False),
+        ("relative_humidity_pct", DoubleType(), False),
+        ("_record_hash", StringType(), True),
+        ("_run_id", StringType(), True),
+        ("_route", StringType(), True),
+        ("_ingested_at", TimestamptzType(), True),
+    ]
+    return Schema(
+        *(
+            NestedField(field_id=i, name=name, field_type=kind, required=required)
+            for i, (name, kind, required) in enumerate(columns, start=1)
+        )
+    )
 
 
 class IcebergSink:
@@ -147,34 +244,53 @@ class IcebergSink:
             props |= {"glue.region": settings.s3_region, "client.region": settings.s3_region}
         return cls(load_catalog("gridpulse", **props), settings.raw_namespace)
 
-    def table(self, route: Route) -> Table:
-        identifier = (self._namespace, raw_table_name(route))
+    def _table(self, name: str, schema: Schema, month_of: str) -> Table:
+        """Load the table, or create it partitioned by month of the `month_of` column."""
+        identifier = (self._namespace, name)
         try:
             return self._catalog.load_table(identifier)
         except NoSuchTableError:
             pass
         self._catalog.create_namespace_if_not_exists(self._namespace)
-        schema = raw_table_schema(route)
-        period_utc = schema.find_field("period_utc").field_id
         spec = PartitionSpec(
             PartitionField(
-                source_id=period_utc,
+                source_id=schema.find_field(month_of).field_id,
                 field_id=1000,
                 transform=MonthTransform(),
-                name="period_utc_month",
+                name=f"{month_of}_month",
             )
         )
         return self._catalog.create_table_if_not_exists(
             identifier, schema=schema, partition_spec=spec
         )
 
-    def append(self, route: Route, records: Sequence[dict]) -> int:
+    def table(self, route: Route) -> Table:
+        return self._table(raw_table_name(route), raw_table_schema(route), "period_utc")
+
+    @staticmethod
+    def _append(table: Table, records: Sequence[dict]) -> int:
         if not records:
             return 0
-        table = self.table(route)
         arrow = pa.Table.from_pylist(list(records), schema=table.schema().as_arrow())
         table.append(arrow)
         return arrow.num_rows
+
+    def append(self, route: Route, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(self.table(route), records)
+
+    def append_runs(self, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(self._table(RUNS_TABLE, runs_table_schema(), "started_at"), records)
+
+    def append_noaa(self, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(
+            self._table(NOAA_TABLE, noaa_table_schema(), "observed_at_utc"), records
+        )
 
 
 def ingest_date(ts: datetime) -> str:

@@ -7,6 +7,7 @@ from reruns are removed by `_record_hash` in dbt staging.
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -15,7 +16,10 @@ from pydantic import ValidationError
 
 from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import Route
-from gridpulse_ingestion.storage import IcebergSink, RawStore, ingest_date
+from gridpulse_ingestion.noaa import ghcnh
+from gridpulse_ingestion.storage import IcebergSink, RawStore, ingest_date, run_record
+
+log = logging.getLogger(__name__)
 
 
 def resolve_auto_start(
@@ -49,6 +53,15 @@ class RecordValidationError(RuntimeError):
 def run_id_for(route: Route, start: datetime, end: datetime, facets: Sequence[str] = ()) -> str:
     key = "|".join([route.name, start.isoformat(), end.isoformat(), ",".join(sorted(facets))])
     return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def record_run(sink: IcebergSink, manifest: dict, appended_at: datetime) -> None:
+    """Also append the manifest to raw.ingestion_runs for fct_ingestion_runs. Best effort: the
+    S3 manifest is the record, and `gridpulse-extract manifests` can backfill a missed row."""
+    try:
+        sink.append_runs([run_record(manifest, appended_at)])
+    except Exception:
+        log.warning("could not append run %s to ingestion_runs", manifest["run_id"], exc_info=True)
 
 
 def record_hash(route: Route, row: dict) -> str:
@@ -135,4 +148,76 @@ def extract(
     finally:
         manifest["duration_seconds"] = round(time.monotonic() - clock, 3)
         raw_store.put_manifest(raw_store.manifest_key(route.name, day, run_id, started), manifest)
+        record_run(sink, manifest, started)
+    return manifest
+
+
+class NoStationDataError(RuntimeError):
+    """None of the requested stations has a GHCNh file for the window."""
+
+
+def noaa_run_id(start: datetime, end: datetime, stations: Sequence[str]) -> str:
+    key = "|".join(
+        [ghcnh.ROUTE_NAME, start.isoformat(), end.isoformat(), ",".join(sorted(stations))]
+    )
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def extract_noaa(
+    stations: Sequence[str],
+    start: datetime,
+    end: datetime,
+    *,
+    s3,
+    raw_store: RawStore,
+    sink: IcebergSink,
+    now: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> dict:
+    """Load GHCNh observations for the stations and window [start, end); return the manifest.
+
+    The source files are a public archive, so the raw copy kept here is the append-only Iceberg
+    table, not a second copy of each file. A station without a file is recorded in the
+    manifest (NOAA does drop stations); the run fails only if no station has data.
+    """
+    started = now()
+    clock = time.monotonic()
+    run_id = noaa_run_id(start, end, stations)
+    manifest: dict = {
+        "run_id": run_id,
+        "route": ghcnh.ROUTE_NAME,
+        "window_start_utc": start.isoformat(),
+        "window_end_utc": end.isoformat(),
+        "stations": sorted(stations),
+        "started_at": started.isoformat(),
+        "status": "running",
+        "stations_missing": [],
+        "rows_received": 0,
+        "rows_appended": 0,
+    }
+    records: list[dict] = []
+    try:
+        for station in sorted(stations):
+            found = False
+            for year in ghcnh.years(start, end):
+                table = ghcnh.read_station_year(s3, station, year)
+                if table is None:
+                    continue
+                found = True
+                records += ghcnh.to_records(table, start, end, run_id=run_id, ingested_at=started)
+            if not found:
+                manifest["stations_missing"].append(station)
+        manifest["rows_received"] = len(records)
+        if len(manifest["stations_missing"]) == len(stations):
+            raise NoStationDataError(f"no GHCNh file for any of {sorted(stations)}")
+        manifest["rows_appended"] = sink.append_noaa(records)
+        raw_store.advance_watermark(ghcnh.ROUTE_NAME, stations, end)
+        manifest["status"] = "succeeded"
+    except Exception as exc:
+        manifest.update(status="failed", error=f"{type(exc).__name__}: {exc}"[:2000])
+        raise
+    finally:
+        manifest["duration_seconds"] = round(time.monotonic() - clock, 3)
+        key = raw_store.manifest_key(ghcnh.ROUTE_NAME, ingest_date(started), run_id, started)
+        raw_store.put_manifest(key, manifest)
+        record_run(sink, manifest, started)
     return manifest

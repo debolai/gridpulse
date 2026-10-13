@@ -16,6 +16,16 @@ flags:
 vars:
   # Days the daily ingestion sweep re-pulls to catch revisions (blueprint: 30).
   revision_window_days: 30
+  # Reconciliation (blueprint B1 "done when"): a BA-hour reconciles when two independent EIA
+  # series agree within this fraction (or 1 MWh), and each BA must reconcile this share of hours.
+  reconciliation_tolerance: 0.01
+  reconciliation_min_pass_rate: 0.98
+  # Quality flags: a value is a spike when it differs from BOTH adjacent hours by more than this
+  # fraction in the same direction (the largest real hour-to-hour demand step in the Jul-Oct 2026
+  # sample was 22.7%). A level shift moves away from only one neighbour, so it is not flagged.
+  spike_threshold: 0.5
+  # Weather: a station's missing hours are interpolated when the gap is at most this long.
+  weather_max_gap_hours: 2
 
 seeds:
   gridpulse:
@@ -26,6 +36,21 @@ seeds:
         is_active: boolean
         activation_date: date
         retirement_date: date
+    ba_weather_stations:
+      +column_types:
+        cbsa_code: varchar
+        metro_population: bigint
+    reconciliation_exceptions:
+      +column_types:
+        observed_on: date
+    fuel_type_map:
+      +column_types:
+        is_renewable: boolean
+        is_storage: boolean
+
+snapshots:
+  gridpulse:
+    +table_type: iceberg
 
 models:
   gridpulse:

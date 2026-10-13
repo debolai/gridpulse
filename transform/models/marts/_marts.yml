@@ -194,9 +194,53 @@ models:
         description: >
           Total interchange (EIA series TI), MWh. Positive = net exports, negative = net
           imports. The semantic layer's net_imports metric flips the sign.
+      - name: demand_quality_status
+        data_type: varchar
+        description: >
+          Quality of demand_mwh for the hour: ok, suspect (spike, or an implausible zero or
+          negative), invalid (impossible value) or missing. See int_grid__quality_flags.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ok", "suspect", "invalid", "missing"]
+      - name: demand_forecast_quality_status
+        data_type: varchar
+        description: >
+          Quality of demand_forecast_mwh for the hour: ok, suspect (spike, or an implausible zero or
+          negative), invalid (impossible value) or missing. See int_grid__quality_flags.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ok", "suspect", "invalid", "missing"]
+      - name: net_generation_quality_status
+        data_type: varchar
+        description: >
+          Quality of net_generation_mwh for the hour: ok, suspect (spike, or an implausible zero or
+          negative), invalid (impossible value) or missing. See int_grid__quality_flags.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ok", "suspect", "invalid", "missing"]
+      - name: total_interchange_quality_status
+        data_type: varchar
+        description: >
+          Quality of total_interchange_mwh for the hour: ok or missing (interchange changes
+          sign as flows reverse, so zero, negative and spike rules do not apply).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ok", "suspect", "invalid", "missing"]
+      - name: temperature_c
+        data_type: double
+        description: >
+          Population-weighted air temperature across the BA's main metro areas, °C (NOAA
+          GHCNh; seed ba_weather_stations). Null until NOAA publishes the hour (about 1.5 days).
+      - name: temperature_weight_coverage
+        data_type: double
+        description: Share of the BA's station population weight that had a temperature (1.0 = all).
       - name: last_ingested_at_utc
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
-        description: Latest load that changed any series for this BA-hour.
+        description: Latest load that changed anything in this BA-hour (grid series or weather).
 
   - name: fct_grid_coverage_hourly
     description: >
@@ -260,6 +304,260 @@ models:
       - name: is_interchange_reported
         data_type: boolean
 
+  - name: dim_fuel_type
+    description: >
+      One row per EIA fuel code, from seed `fuel_type_map` (EIA's own labels for a code vary,
+      so the seed is the single source of names and categories).
+    columns:
+      - name: fuel_code
+        data_type: varchar
+        description: EIA fuel code (COL, NG, NUC, WND, SUN, BAT, ...).
+        constraints:
+          - type: not_null
+        data_tests: [unique]
+      - name: fuel_name
+        data_type: varchar
+        data_tests: [not_null]
+      - name: fuel_category
+        data_type: varchar
+        description: fossil, nuclear, renewable, storage or other.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["fossil", "nuclear", "renewable", "storage", "other"]
+      - name: is_renewable
+        data_type: boolean
+        description: Wind, solar, hydro, geothermal, including hybrids with integrated storage.
+      - name: is_storage
+        data_type: boolean
+        description: Storage or hybrid with storage; these can report negative (charging) hours.
+
+  - name: fct_generation_by_fuel_hourly
+    description: >
+      Hourly net generation by fuel per balancing authority. Grain: BA × fuel × UTC hour.
+      Storage fuels are negative while charging. For a BA-hour, the fuels should add up to
+      net generation in fct_grid_hourly (see the reconciliation test).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, fuel_code, period_utc]
+    columns:
+      - name: ba_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_balancing_authority')
+                field: ba_code
+      - name: fuel_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_fuel_type')
+                field: fuel_code
+              config:
+                severity: warn
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour, UTC.
+        constraints:
+          - type: not_null
+      - name: period_local
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour in the BA's local time zone.
+        data_tests: [not_null]
+      - name: date_local
+        data_type: date
+      - name: hour_local
+        data_type: integer
+        description: Local hour of day, 0-23.
+      - name: generation_mwh
+        data_type: double
+        description: Net generation from this fuel, MWh. Null when the BA did not report it.
+      - name: last_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The load that last changed this value.
+
+  - name: fct_interchange_hourly
+    description: >
+      Hourly directional flow between a balancing authority and each directly connected
+      neighbour, as reported by the BA. Grain: BA × neighbour × UTC hour. Positive = the BA
+      exports to the neighbour. For a BA-hour the flows add up to total_interchange_mwh in
+      fct_grid_hourly (see the reconciliation test). Neighbours outside the U.S. are kept and
+      flagged with is_international_neighbor.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, neighbor_ba_code, period_utc]
+    columns:
+      - name: ba_code
+        data_type: varchar
+        description: Reporting balancing authority.
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_balancing_authority')
+                field: ba_code
+      - name: neighbor_ba_code
+        data_type: varchar
+        description: Directly connected balancing authority (U.S., Canadian or Mexican).
+        constraints:
+          - type: not_null
+      - name: neighbor_ba_name
+        data_type: varchar
+        description: Neighbour's name as EIA reports it (the only name source for non-U.S. operators).
+      - name: is_international_neighbor
+        data_type: boolean
+        description: True when the neighbour is not a U.S. balancing authority in dim_balancing_authority.
+        data_tests: [not_null]
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour, UTC.
+        constraints:
+          - type: not_null
+      - name: period_local
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour in the reporting BA's local time zone.
+        data_tests: [not_null]
+      - name: date_local
+        data_type: date
+      - name: hour_local
+        data_type: integer
+      - name: interchange_mwh
+        data_type: double
+        description: >
+          Flow in MWh. Positive = ba_code exports to neighbor_ba_code, negative = imports.
+          The semantic layer's net_imports metric flips the sign.
+      - name: last_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The load that last changed this value.
+
+  - name: fct_data_revisions
+    description: >
+      Audit of EIA revisions: one row per change to a published value, with its size and how
+      late it came. Grain: route × BA × item × hour × revising load. item_code is the series
+      (region-data: D, DF, NG, TI), the fuel (fuel-type-data) or the neighbour BA
+      (interchange-data). Answers "how much does a BA revise its data, and how late?".
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [route, ba_code, item_code, period_utc, revised_at_utc]
+    columns:
+      - name: route
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: ba_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: item_code
+        data_type: varchar
+        description: Series code, fuel code or neighbour BA code, depending on the route.
+        constraints:
+          - type: not_null
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The hour that was revised (UTC).
+        constraints:
+          - type: not_null
+      - name: revision_type
+        data_type: varchar
+        description: changed, filled (null to a value) or removed (a value to null).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["changed", "filled", "removed"]
+      - name: previous_value_mwh
+        data_type: double
+      - name: revised_value_mwh
+        data_type: double
+      - name: change_mwh
+        data_type: double
+        description: revised minus previous; null for filled and removed.
+      - name: change_ratio
+        data_type: double
+        description: change_mwh as a fraction of the previous absolute value (0.05 = +5%).
+      - name: previous_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the load that had observed the previous value.
+      - name: revised_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the load that first observed the revised value.
+        constraints:
+          - type: not_null
+      - name: hours_after_period
+        data_type: integer
+        description: >
+          Hours between the start of the revised hour and the load that saw the change. An
+          upper bound on how late EIA revised it: loads only run every so often.
+
+  - name: fct_ingestion_runs
+    description: >
+      One row per extraction attempt across all sources (EIA routes, NOAA): window, rows
+      expected, received and appended, duration, and errors. Feeds pipeline-health views
+      and the freshness story.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [run_id, started_at_utc]
+    columns:
+      - name: run_id
+        data_type: varchar
+        description: Deterministic id from route, window and scope (a rerun of the same window shares it).
+        constraints:
+          - type: not_null
+      - name: route
+        data_type: varchar
+        description: region-data, fuel-type-data, interchange-data or noaa-ghcnh.
+        constraints:
+          - type: not_null
+      - name: started_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        constraints:
+          - type: not_null
+      - name: status
+        data_type: varchar
+        description: succeeded, failed, or running (the process died before finishing).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["succeeded", "failed", "running"]
+      - name: window_start_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+      - name: window_end_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Exclusive end of the requested window.
+      - name: scope
+        data_type: varchar
+        description: JSON list of the BAs (EIA) or stations (NOAA) requested; [] = all BAs.
+      - name: pages
+        data_type: bigint
+      - name: rows_expected
+        data_type: bigint
+        description: The total the EIA API reported; null for NOAA.
+      - name: rows_received
+        data_type: bigint
+      - name: rows_appended
+        data_type: bigint
+      - name: is_complete
+        data_type: boolean
+        description: Succeeded, received every expected row, and appended everything it received.
+      - name: duration_seconds
+        data_type: double
+      - name: error
+        data_type: varchar
+      - name: details
+        data_type: varchar
+        description: Other manifest fields as JSON (API warnings, unknown fields, missing stations).
+
 unit_tests:
   - name: local_time_handles_dst_and_arizona
     description: >
@@ -289,6 +587,12 @@ unit_tests:
           AZPS,D,2026-03-08 09:00:00,1.0,2026-03-09 00:00:00
           AZPS,D,2026-07-01 07:00:00,1.0,2026-07-02 00:00:00
           EPE,D,2026-07-01 06:00:00,1.0,2026-07-02 00:00:00
+      - input: ref('int_grid__quality_flags')
+        format: dict
+        rows: []
+      - input: ref('int_weather__ba_hourly')
+        format: dict
+        rows: []
     expect:
       format: csv
       rows: |
@@ -302,7 +606,9 @@ unit_tests:
         EPE,2026-07-01 06:00:00,2026-07-01 00:00:00,2026-07-01,0
 
   - name: series_pivot_to_columns
-    description: The four series for one BA-hour become one row; a missing series stays null.
+    description: >
+      The four series for one BA-hour become one row; a missing series stays null and its
+      quality status is "missing"; statuses come from int_grid__quality_flags.
     model: fct_grid_hourly
     overrides:
       macros:
@@ -320,8 +626,58 @@ unit_tests:
           ERCO,D,2026-10-01 00:00:00,75544.0,2026-10-02 00:00:00
           ERCO,NG,2026-10-01 00:00:00,76000.0,2026-10-02 00:00:00
           ERCO,TI,2026-10-01 00:00:00,-456.0,2026-10-03 00:00:00
+      - input: ref('int_grid__quality_flags')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,quality_status
+          ERCO,D,2026-10-01 00:00:00,ok
+          ERCO,NG,2026-10-01 00:00:00,suspect
+          ERCO,TI,2026-10-01 00:00:00,ok
+      - input: ref('int_weather__ba_hourly')
+        format: dict
+        rows: []
     expect:
       format: csv
       rows: |
-        ba_code,period_utc,demand_mwh,demand_forecast_mwh,net_generation_mwh,total_interchange_mwh,last_ingested_at_utc
-        ERCO,2026-10-01 00:00:00,75544.0,,76000.0,-456.0,2026-10-03 00:00:00
+        ba_code,period_utc,demand_mwh,demand_forecast_mwh,net_generation_mwh,total_interchange_mwh,demand_quality_status,demand_forecast_quality_status,net_generation_quality_status,total_interchange_quality_status,last_ingested_at_utc
+        ERCO,2026-10-01 00:00:00,75544.0,,76000.0,-456.0,ok,missing,suspect,ok,2026-10-03 00:00:00
+
+  - name: late_weather_fills_an_existing_hour
+    description: >
+      NOAA publishes about 1.5 days after EIA. An hour already built without temperature must
+      be rebuilt when its weather arrives, even though no grid value changed.
+    model: fct_grid_hourly
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: this
+        format: sql
+        rows: |
+          select 'PJM' as ba_code, timestamp '2026-10-01 00:00:00' as period_utc,
+              timestamp '2026-10-05 00:00:00' as last_ingested_at_utc
+      - input: ref('int_grid__latest_values')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,value_mwh,ingested_at_utc
+          PJM,D,2026-10-01 00:00:00,90000.0,2026-10-05 00:00:00
+      - input: ref('int_grid__quality_flags')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,quality_status
+          PJM,D,2026-10-01 00:00:00,ok
+      - input: ref('int_weather__ba_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,temperature_c,weight_coverage,last_ingested_at_utc
+          PJM,2026-10-01 00:00:00,18.5,1.0,2026-10-07 00:00:00
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,time_zone
+          PJM,America/New_York
+    expect:
+      format: csv
+      rows: |
+        ba_code,period_utc,demand_mwh,temperature_c,temperature_weight_coverage,last_ingested_at_utc
+        PJM,2026-10-01 00:00:00,90000.0,18.5,1.0,2026-10-07 00:00:00

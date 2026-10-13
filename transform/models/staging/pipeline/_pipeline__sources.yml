@@ -1,0 +1,12 @@
+version: 2
+
+sources:
+  - name: pipeline_raw
+    description: Records the extractor keeps about its own runs.
+    schema: raw
+    tables:
+      - name: ingestion_runs
+        description: >
+          One row per extraction attempt, mirroring the run manifest in the raw bucket
+          (`_manifests/`). Appended at the end of each run; `gridpulse-extract manifests`
+          backfills from S3, so an attempt can appear more than once.

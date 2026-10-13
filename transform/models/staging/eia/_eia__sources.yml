@@ -32,3 +32,33 @@ sources:
             description: SHA-256 of period, respondent, type, value and units. Identifies a version.
           - name: _ingested_at
             description: When the run that pulled this row started (UTC).
+      - name: eia_fuel_type_data
+        description: >
+          EIA API v2 `electricity/rto/fuel-type-data`: hourly net generation by fuel per
+          balancing authority. Values are strings exactly as the API returned them.
+        columns:
+          - name: respondent
+            description: Balancing authority code.
+          - name: fueltype
+            description: EIA fuel code (COL, NG, NUC, WND, SUN, ...); mapped by seed `fuel_type_map`.
+          - name: value
+            description: Net generation for the hour as a string; storage can be negative (charging).
+          - name: _record_hash
+            description: SHA-256 of period, respondent, fueltype, value and units.
+          - name: _ingested_at
+            description: When the run that pulled this row started (UTC).
+      - name: eia_interchange_data
+        description: >
+          EIA API v2 `electricity/rto/interchange-data`: hourly flow from one balancing
+          authority to a directly connected neighbour. Positive = export from `fromba`.
+        columns:
+          - name: fromba
+            description: Reporting balancing authority (the flow's origin).
+          - name: toba
+            description: Neighbouring balancing authority.
+          - name: value
+            description: Flow for the hour as a string; positive = fromba exports to toba.
+          - name: _record_hash
+            description: SHA-256 of period, fromba, toba, value and units.
+          - name: _ingested_at
+            description: When the run that pulled this row started (UTC).

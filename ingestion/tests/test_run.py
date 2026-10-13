@@ -7,7 +7,7 @@ import pytest
 from gridpulse_ingestion.eia.client import Page
 from gridpulse_ingestion.eia.routes import REGION_DATA
 from gridpulse_ingestion.run import RecordValidationError, extract, run_id_for
-from gridpulse_ingestion.storage import RawStore, raw_table_schema
+from gridpulse_ingestion.storage import RawStore, raw_table_schema, run_record, runs_table_schema
 
 START = datetime(2026, 10, 1, 0, tzinfo=UTC)
 END = datetime(2026, 10, 1, 12, tzinfo=UTC)
@@ -224,3 +224,52 @@ def test_auto_start_caps_long_gaps_and_warns():
         end, end - timedelta(days=90), timedelta(hours=72), timedelta(days=30)
     )
     assert start == end - timedelta(days=30) and "Backfill" in warning
+
+
+def test_every_attempt_is_also_a_run_row(region_pages, raw_store, sink):
+    broken = json.loads(json.dumps(region_pages))
+    del broken[0]["response"]["data"][0]["respondent"]
+    with pytest.raises(RecordValidationError):
+        extract(REGION_DATA, START, END, client=ReplayClient(broken), raw_store=raw_store,
+                sink=sink, now=lambda: NOW)  # fmt: skip
+    extract(REGION_DATA, START, END, client=ReplayClient(region_pages), raw_store=raw_store,
+            sink=sink, now=lambda: NOW)  # fmt: skip
+
+    failed, succeeded = sink.runs
+    assert (failed["status"], succeeded["status"]) == ("failed", "succeeded")
+    assert "RecordValidationError" in failed["error"]
+    assert succeeded["rows_expected"] == succeeded["rows_received"] == succeeded["rows_appended"]
+    assert set(succeeded) == {f.name for f in runs_table_schema().fields}
+    assert json.loads(succeeded["scope"]) == []  # all BAs
+    assert "warnings" in json.loads(succeeded["details"])  # extra manifest fields are kept
+
+
+def test_run_record_keeps_noaa_manifest_fields():
+    manifest = {
+        "run_id": "r1",
+        "route": "noaa-ghcnh",
+        "started_at": NOW.isoformat(),
+        "status": "succeeded",
+        "window_start_utc": START.isoformat(),
+        "window_end_utc": END.isoformat(),
+        "stations": ["USW00094846"],
+        "stations_missing": ["USW00099999"],
+        "rows_received": 5,
+        "rows_appended": 5,
+        "duration_seconds": 1.5,
+    }
+    row = run_record(manifest, NOW)
+    assert row["started_at"] == NOW and row["window_end_utc"] == END
+    assert json.loads(row["scope"]) == ["USW00094846"]
+    assert json.loads(row["details"]) == {"stations_missing": ["USW00099999"]}
+    assert row["pages"] is None and row["rows_expected"] is None
+
+
+def test_a_failed_run_row_append_does_not_fail_the_load(region_pages, raw_store, sink):
+    def broken_append(records):
+        raise RuntimeError("catalog unavailable")
+
+    sink.append_runs = broken_append
+    manifest = extract(REGION_DATA, START, END, client=ReplayClient(region_pages),
+                       raw_store=raw_store, sink=sink, now=lambda: NOW)  # fmt: skip
+    assert manifest["status"] == "succeeded" and len(raw_store.manifests) == 1

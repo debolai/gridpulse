@@ -1,0 +1,21 @@
+snapshots:
+  - name: snap_ba_reference
+    description: >
+      SCD Type 2 history of balancing authority attributes from seed ba_reference: a changed
+      attribute (name, time zone, interconnection, retirement, ...) closes the old row and opens
+      a new one, so historical facts can join to the attributes true at the time. A BA removed
+      from the seed is closed, not deleted.
+    relation: ref('ba_reference')
+    config:
+      schema: snapshots
+      unique_key: ba_code
+      strategy: check
+      check_cols: all
+      hard_deletes: invalidate
+    columns:
+      - name: ba_code
+        data_tests: [not_null]
+      - name: dbt_valid_from
+        description: When this version of the BA's attributes was first seen.
+      - name: dbt_valid_to
+        description: When it was replaced; null for the current version.

@@ -1,0 +1,2 @@
+check_name,ba_code,reason,observed_on
+interchange_to_total_interchange,PJM,"PJM's per-neighbour flows (interchange-data) do not add up to its total interchange (region-data TI): over Jul-Oct 2026 the gap averaged 2467 MWh with a standard deviation of about 2700 MWh, and only 10% of hours matched within 1%; some hours list 5-6 of its 7 neighbours. Source-side, not a modelling error. Remove this row when the check passes for PJM.",2026-10-13
