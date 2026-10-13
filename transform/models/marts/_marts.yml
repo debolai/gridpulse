@@ -78,50 +78,140 @@ models:
         label: Demand (MWh)
         description: >
           Total electricity demand (load) in MWh: the sum of hourly demand over the selected
-          hours and balancing authorities. Hours the BA did not report are excluded.
-          Synonyms: load, consumption, usage.
+          hours and balancing authorities. Hours the BA did not report, and values flagged
+          suspect or invalid (one-hour spikes, zeros), are excluded; flagged_values counts
+          them. Synonyms: load, consumption, usage.
         type: simple
         agg: sum
-        expr: demand_mwh
+        expr: case when demand_quality_status = 'ok' then demand_mwh end
         config:
-          meta: {agent: true, unit: MWh, additive: true, synonyms: [load, consumption, usage]}
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            synonyms: [load, consumption, usage]
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
       - name: peak_demand
         label: Peak hourly demand (MW)
         description: >
           Highest single-hour demand of one balancing authority in the period (MWh in one
           hour = average MW). NOT a system peak: when grouped across several BAs it returns
           the largest individual BA-hour, not the combined peak. For a region's combined
-          peak use coincident_peak_demand (added later).
+          peak use coincident_peak_demand. Flagged values (spikes, zeros) are excluded, so a
+          one-hour reporting spike can't become the peak.
         type: simple
         agg: max
-        expr: demand_mwh
+        expr: case when demand_quality_status = 'ok' then demand_mwh end
         config:
-          meta: {agent: true, unit: MW, additive: false, synonyms: [max load, peak load]}
+          meta:
+            agent: true
+            unit: MW
+            additive: false
+            synonyms: [max load, peak load]
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
       - name: forecast_error_mape
         label: Day-ahead forecast error (MAPE, %)
         description: >
           Mean absolute percentage error of the BA's day-ahead demand forecast:
           average of |actual - forecast| / actual x 100 over hours where actual demand > 0 and
-          both values were reported. Lower is better.
+          both values were reported and not flagged. Lower is better.
         type: simple
         agg: average
         expr: >
-          case when demand_mwh > 0 and demand_forecast_mwh is not null
+          case when demand_quality_status = 'ok' and demand_forecast_quality_status = 'ok'
+          and demand_mwh > 0
           then abs(demand_mwh - demand_forecast_mwh) / demand_mwh * 100 end
         config:
-          meta: {agent: true, unit: percent, additive: false, synonyms: [forecast accuracy, forecast miss]}
+          meta:
+            agent: true
+            unit: percent
+            additive: false
+            synonyms: [forecast accuracy, forecast miss]
+            quality: Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).
       - name: forecast_bias
         label: Day-ahead forecast bias (MWh)
         description: >
-          Average of (forecast - actual) demand per hour, over hours where both were reported.
-          Positive means the operator over-forecast; negative means it under-forecast.
+          Average of (forecast - actual) demand per hour, over hours where both were reported
+          and neither is flagged. Positive means the operator over-forecast; negative means it
+          under-forecast.
         type: simple
         agg: average
         expr: >
-          case when demand_mwh is not null and demand_forecast_mwh is not null
+          case when demand_quality_status = 'ok' and demand_forecast_quality_status = 'ok'
           then demand_forecast_mwh - demand_mwh end
         config:
-          meta: {agent: true, unit: MWh, additive: false, synonyms: [over-forecast, under-forecast]}
+          meta:
+            agent: true
+            unit: MWh
+            additive: false
+            synonyms: [over-forecast, under-forecast]
+            quality: Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).
+      - name: net_generation
+        label: Net generation (MWh)
+        description: >
+          Total net generation in MWh (EIA series NG): electricity the BA's plants produced
+          minus their own use, summed over the selected hours and balancing authorities. For
+          the split by fuel use generation_by_fuel. Values flagged suspect (spikes, zeros,
+          negatives) are excluded. Synonyms: generation, output, production.
+        type: simple
+        agg: sum
+        expr: case when net_generation_quality_status = 'ok' then net_generation_mwh end
+        config:
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            synonyms: [generation, output, production]
+            quality: >-
+              Excludes net generation values flagged suspect (one-hour spikes, zeros,
+              negatives).
+      - name: net_imports
+        label: Net imports (MWh)
+        description: >
+          Electricity the BA took in from its neighbours minus what it sent out, MWh: -1 x
+          total interchange (EIA reports exports as positive; this flips the sign so imports
+          read positive). Negative = net exporter. Summed over several BAs, flows between them
+          roughly cancel, leaving the group's exchange with everyone else.
+          Synonyms: imports, interchange, power imported.
+        type: simple
+        agg: sum
+        expr: case when total_interchange_quality_status = 'ok' then -1 * total_interchange_mwh end
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [imports, interchange, power imported]}
+      - name: cooling_degree_hours
+        label: Cooling degree hours (°C·h)
+        description: >
+          How much air-conditioning weather the BA had: the sum over hours of
+          max(temperature - 18.3 °C, 0), using the BA's population-weighted temperature
+          (18.3 °C = 65 °F, the U.S. convention). Higher = hotter. Hours without a temperature
+          are skipped (NOAA publishes about 1.5 days after EIA). Summed across several BAs it
+          adds their totals; compare BAs by grouping by balancing_authority.
+          Synonyms: CDH, heat, cooling demand weather.
+        type: simple
+        agg: sum
+        expr: greatest(temperature_c - 18.3, 0)
+        config:
+          meta: {agent: true, unit: degC_hours, additive: true, synonyms: [CDH, heat, hot weather]}
+      - name: flagged_values
+        label: Flagged values
+        description: >
+          How many hourly values failed the quality checks and are left out of the other
+          metrics: demand, day-ahead forecast and net generation values flagged suspect
+          (one-hour spike, zero forecast or generation, negative generation) or invalid (zero
+          demand), counted per BA-hour and series. Use it to ask how clean the data behind an
+          answer is. Synonyms: bad data, spikes, anomalies, quality issues.
+        type: simple
+        agg: sum
+        expr: >
+          case when demand_quality_status in ('suspect', 'invalid') then 1 else 0 end
+          + case when demand_forecast_quality_status in ('suspect', 'invalid') then 1 else 0 end
+          + case when net_generation_quality_status in ('suspect', 'invalid') then 1 else 0 end
+        config:
+          meta:
+            agent: true
+            unit: values
+            additive: true
+            synonyms: [bad data, spikes, anomalies, quality issues]
       - name: demand_month_to_date
         label: Demand, month to date (MWh)
         description: Cumulative demand from the start of each month.
@@ -132,7 +222,11 @@ models:
         # (MetricFlow defaults to the first, which looked wrong in the A4 spike).
         period_agg: last
         config:
-          meta: {agent: true, unit: MWh, additive: true}
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -268,14 +362,20 @@ models:
         type: simple
         agg: sum_boolean
         expr: is_demand_reported
+      - name: demand_hours_valid
+        label: BA-hours with valid demand
+        description: BA-hours with a reported demand value that passed the quality checks.
+        type: simple
+        agg: sum_boolean
+        expr: is_demand_valid
       - name: data_completeness
         label: Data completeness (demand, %)
         description: >
-          Share of expected BA-hours that have a reported demand value, as a fraction from 0 to
-          1. Expected hours run from each BA's first report to the latest hour with demand.
-          Synonyms: coverage, missing data, gaps.
+          Share of expected BA-hours that have a valid demand value (reported and not flagged
+          as a spike or zero), as a fraction from 0 to 1. Expected hours run from each BA's
+          first report to the latest hour with demand. Synonyms: coverage, missing data, gaps.
         type: ratio
-        numerator: demand_hours_reported
+        numerator: demand_hours_valid
         denominator: expected_hours
         config:
           meta: {agent: true, unit: fraction, additive: false, synonyms: [coverage, gaps, missing data]}
@@ -297,6 +397,9 @@ models:
           name: period_utc
       - name: is_demand_reported
         data_type: boolean
+      - name: is_demand_valid
+        data_type: boolean
+        description: Demand was reported and its quality status is ok (not a spike or zero).
       - name: is_forecast_reported
         data_type: boolean
       - name: is_net_generation_reported
@@ -304,10 +407,218 @@ models:
       - name: is_interchange_reported
         data_type: boolean
 
+  - name: fct_demand_scope_hourly
+    description: >
+      Hourly demand summed over standard groups of balancing authorities (each
+      interconnection, each EIA region, the Lower 48). Grain: scope x UTC hour. Every expected
+      hour is kept; bas_reported / bas_expected show how complete each hour is. The basis for
+      coincident_peak_demand.
+    semantic_model:
+      enabled: true
+      name: demand_scope_hourly
+    primary_entity: demand_scope
+    agg_time_dimension: period_utc
+    metrics:
+      - name: coincident_peak_demand
+        label: Coincident peak demand (MW)
+        description: >
+          System peak of a group of balancing authorities: the highest hour of their COMBINED
+          demand (MWh in one hour = average MW). Always filter or group by
+          demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region
+          (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each
+          BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not
+          supported. A BA that didn't report, or whose value is flagged (spike, zero), is left
+          out of that hour's total; filter demand_scope__is_complete = true to use only hours
+          where every BA reported a valid value.
+          Synonyms: system peak, regional peak, combined peak.
+        type: simple
+        agg: max
+        expr: demand_mwh
+        config:
+          meta:
+            agent: true
+            unit: MW
+            additive: false
+            synonyms: [system peak, regional peak, combined peak, grid peak]
+            quality: >-
+              Each hour's total leaves out BAs whose demand is flagged suspect or invalid
+              (spikes, zeros).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [scope_id, period_utc]
+    columns:
+      - name: scope_type
+        data_type: varchar
+        description: interconnection, region or lower_48.
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["interconnection", "region", "lower_48"]
+        dimension:
+          type: categorical
+          name: scope_type
+          description: Kind of group - interconnection, region (EIA region) or lower_48.
+      - name: scope_id
+        data_type: varchar
+        description: scope_type and scope_code together, e.g. "region:CAL" (unique per hour).
+        constraints:
+          - type: not_null
+      - name: scope_code
+        data_type: varchar
+        description: Eastern / Western / ERCOT, an EIA region code (CAL, TEX, ...), or US48.
+        constraints:
+          - type: not_null
+        dimension:
+          type: categorical
+          name: scope_code
+          description: >
+            The group: Eastern, Western or ERCOT (interconnections), an EIA region code such as
+            CAL, TEX, MIDA, NY, NE, FLA, MIDW, CENT, CAR, SE, TEN, SW, NW, or US48.
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour, UTC.
+        constraints:
+          - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: Start of the hour in UTC.
+      - name: demand_mwh
+        data_type: double
+        description: >
+          Sum of valid demand across the scope's BAs for the hour, MWh (flagged values left
+          out).
+      - name: bas_expected
+        data_type: integer
+        description: BAs in the scope that should have reported demand this hour.
+      - name: bas_reported
+        data_type: integer
+        description: BAs in the scope that did report demand this hour.
+      - name: bas_flagged
+        data_type: integer
+        description: BAs whose demand this hour is flagged suspect or invalid (not summed).
+      - name: is_complete
+        data_type: boolean
+        description: True when every expected BA reported a valid (unflagged) demand value.
+        dimension:
+          type: categorical
+          name: is_complete
+          description: True when every BA in the group reported a valid demand value for the hour.
+
+  - name: fct_value_checks_hourly
+    description: >
+      How often each published EIA value was read and whether it ever changed. Grain: route ×
+      BA × item × UTC hour (item = series, fuel or neighbour BA). Re-checked = seen by at least
+      two loads; revised = re-checked and had more than one version. The basis for
+      revision_rate.
+    semantic_model:
+      enabled: true
+      name: value_checks_hourly
+    primary_entity: value_check
+    agg_time_dimension: period_utc
+    metrics:
+      - name: values_rechecked
+        label: Values re-checked
+        description: Published values (BA × item × hour) read by at least two loads.
+        type: simple
+        agg: sum_boolean
+        expr: is_rechecked
+      - name: values_revised
+        label: Values revised
+        description: Re-checked values whose number changed at least once after first publication.
+        type: simple
+        agg: sum_boolean
+        expr: is_revised
+      - name: revision_rate
+        label: Revision rate (fraction)
+        description: >
+          Share of re-checked EIA values that the BA changed after first publishing them, as a
+          fraction from 0 to 1. Only values the pipeline read at least twice count (recent
+          hours are re-read for 30 days; older history loaded once can't show revisions).
+          Group by value_check__route (region-data, fuel-type-data, interchange-data) or
+          value_check__item_code (D = demand, DF = day-ahead forecast, NG, TI, a fuel code or a
+          neighbour BA) to see what gets revised. Synonyms: data revisions, corrections.
+        type: ratio
+        numerator: values_revised
+        denominator: values_rechecked
+        config:
+          meta:
+            agent: true
+            unit: fraction
+            additive: false
+            synonyms: [revisions, corrections, restatements, data changes]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [route, ba_code, item_code, period_utc]
+    columns:
+      - name: route
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["region-data", "fuel-type-data", "interchange-data"]
+        dimension:
+          type: categorical
+          name: route
+          description: EIA report - region-data (demand, forecast, NG, TI), fuel-type-data or interchange-data.
+      - name: ba_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+        entity:
+          type: foreign
+          name: balancing_authority
+      - name: item_code
+        data_type: varchar
+        description: Series code (D, DF, NG, TI), fuel code or neighbour BA code, depending on the route.
+        constraints:
+          - type: not_null
+        dimension:
+          type: categorical
+          name: item_code
+          description: >
+            What was published - D (demand), DF (day-ahead forecast), NG (net generation), TI
+            (total interchange), a fuel code (NG, COL, SUN, ...) or a neighbour BA code.
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The hour the value describes (UTC).
+        constraints:
+          - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: The hour the value describes, UTC.
+      - name: loads
+        data_type: integer
+        description: Number of loads that read this value.
+      - name: versions
+        data_type: integer
+        description: Number of distinct versions (record hashes) seen.
+      - name: is_rechecked
+        data_type: boolean
+        description: Read by at least two loads.
+      - name: is_revised
+        data_type: boolean
+        description: Re-checked and changed at least once (A -> B -> A counts).
+      - name: last_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Latest load that read this value.
+
   - name: dim_fuel_type
     description: >
       One row per EIA fuel code, from seed `fuel_type_map` (EIA's own labels for a code vary,
       so the seed is the single source of names and categories).
+    semantic_model:
+      enabled: true
+      name: fuel_types
     columns:
       - name: fuel_code
         data_type: varchar
@@ -315,12 +626,23 @@ models:
         constraints:
           - type: not_null
         data_tests: [unique]
+        entity:
+          type: primary
+          name: fuel_type
       - name: fuel_name
         data_type: varchar
         data_tests: [not_null]
+        dimension:
+          type: categorical
+          name: fuel_name
+          description: Fuel name, e.g. Coal, Natural gas, Wind, Solar, Battery storage.
       - name: fuel_category
         data_type: varchar
         description: fossil, nuclear, renewable, storage or other.
+        dimension:
+          type: categorical
+          name: fuel_category
+          description: Broad fuel group - fossil, nuclear, renewable, storage or other.
         data_tests:
           - accepted_values:
               arguments:
@@ -328,6 +650,10 @@ models:
       - name: is_renewable
         data_type: boolean
         description: Wind, solar, hydro, geothermal, including hybrids with integrated storage.
+        dimension:
+          type: categorical
+          name: is_renewable
+          description: True for wind, solar, hydro and geothermal (including hybrids with storage).
       - name: is_storage
         data_type: boolean
         description: Storage or hybrid with storage; these can report negative (charging) hours.
@@ -337,6 +663,53 @@ models:
       Hourly net generation by fuel per balancing authority. Grain: BA × fuel × UTC hour.
       Storage fuels are negative while charging. For a BA-hour, the fuels should add up to
       net generation in fct_grid_hourly (see the reconciliation test).
+    semantic_model:
+      enabled: true
+      name: generation_by_fuel_hourly
+    primary_entity: fuel_hour
+    agg_time_dimension: period_utc
+    metrics:
+      - name: generation_by_fuel
+        label: Generation by fuel (MWh)
+        description: >
+          Net generation in MWh from EIA's fuel-type report. Group by fuel_type__fuel_name,
+          fuel_type__fuel_category or fuel_type__is_renewable for the fuel mix; filter on a
+          fuel for one source ("wind generation"). Storage counts negative while charging.
+          Summed over all fuels it is close to net_generation but comes from a separate report.
+          Synonyms: fuel mix, generation mix, output by source.
+        type: simple
+        agg: sum
+        expr: generation_mwh
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [fuel mix, generation mix, output by source]}
+      - name: renewable_generation
+        label: Renewable generation (MWh)
+        description: >
+          Net generation from wind, solar, hydro and geothermal (including hybrids with
+          storage), MWh. Synonyms: clean generation, green generation.
+        type: simple
+        agg: sum
+        expr: generation_mwh
+        filter: "{{ Dimension('fuel_type__is_renewable') }} = true"
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [green generation, clean generation]}
+      - name: renewable_share
+        label: Renewable share of generation (fraction)
+        description: >
+          Renewable generation divided by generation from all fuels, as a fraction from 0 to 1
+          (0.35 = 35%). A ratio of sums over the selected hours and BAs, never an average of
+          hourly shares. Both parts come from the same fuel-type report, so the share is
+          consistent even where fuels and net generation disagree.
+          Synonyms: renewables percentage, green share.
+        type: ratio
+        numerator: renewable_generation
+        denominator: generation_by_fuel
+        config:
+          meta:
+            agent: true
+            unit: fraction
+            additive: false
+            synonyms: [renewables percentage, green share, clean share]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -351,6 +724,9 @@ models:
               arguments:
                 to: ref('dim_balancing_authority')
                 field: ba_code
+        entity:
+          type: foreign
+          name: balancing_authority
       - name: fuel_code
         data_type: varchar
         constraints:
@@ -362,20 +738,37 @@ models:
                 field: fuel_code
               config:
                 severity: warn
+        entity:
+          type: foreign
+          name: fuel_type
       - name: period_utc
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour, UTC.
         constraints:
           - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: Start of the hour in UTC.
       - name: period_local
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour in the BA's local time zone.
         data_tests: [not_null]
       - name: date_local
         data_type: date
+        granularity: day
+        dimension:
+          type: time
+          name: date_local
+          description: Calendar date in the BA's own time zone (DST-aware).
       - name: hour_local
         data_type: integer
         description: Local hour of day, 0-23.
+        dimension:
+          type: categorical
+          name: hour_local
+          description: Hour of day (0-23) in the BA's own time zone, e.g. for solar's daily shape.
       - name: generation_mwh
         data_type: double
         description: Net generation from this fuel, MWh. Null when the BA did not report it.
@@ -681,3 +1074,116 @@ unit_tests:
       rows: |
         ba_code,period_utc,demand_mwh,temperature_c,temperature_weight_coverage,last_ingested_at_utc
         PJM,2026-10-01 00:00:00,90000.0,18.5,1.0,2026-10-07 00:00:00
+
+  - name: value_checks_count_rereads_and_versions
+    description: >
+      One load = published, not re-checked. An unchanged re-read is re-checked, not revised.
+      A -> B -> A is revised. Two versions in a single load are not a revision.
+    model: fct_value_checks_hourly
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('int_eia__observations')
+        format: csv
+        rows: |
+          route,ba_code,item_code,period_utc,value_mwh,record_hash,ingested_at_utc
+          region-data,PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,90.0,f,2026-10-01 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,90.0,f,2026-10-02 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,5.0,s1,2026-10-01 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,6.0,s2,2026-10-02 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,5.0,s1,2026-10-03 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,1.0,i1,2026-10-01 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,2.0,i2,2026-10-01 02:00:00
+    expect:
+      format: csv
+      rows: |
+        route,ba_code,item_code,period_utc,loads,versions,is_rechecked,is_revised,last_ingested_at_utc
+        region-data,PJM,D,2026-10-01 00:00:00,1,1,false,false,2026-10-01 02:00:00
+        region-data,PJM,DF,2026-10-01 00:00:00,2,1,true,false,2026-10-02 02:00:00
+        fuel-type-data,PJM,SUN,2026-10-01 00:00:00,3,2,true,true,2026-10-03 02:00:00
+        interchange-data,PJM,MISO,2026-10-01 00:00:00,1,2,false,false,2026-10-01 02:00:00
+
+  - name: demand_scope_leaves_out_flagged_and_missing_bas
+    description: >
+      Hour 1: A reports 100 (ok), B a flagged 1000 MWh spike, C nothing - the region sums only
+      A and is incomplete. Hour 2: all three valid - summed and complete. G is generation-only
+      and never expected.
+    model: fct_demand_scope_hourly
+    given:
+      - input: ref('fct_grid_coverage_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,is_demand_reported
+          A,2026-07-01 00:00:00,true
+          B,2026-07-01 00:00:00,true
+          C,2026-07-01 00:00:00,false
+          G,2026-07-01 00:00:00,false
+          A,2026-07-01 01:00:00,true
+          B,2026-07-01 01:00:00,true
+          C,2026-07-01 01:00:00,true
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,interconnection,region_code,is_generation_only
+          A,Western,CAL,false
+          B,Western,CAL,false
+          C,Western,NW,false
+          G,Western,NW,true
+      - input: ref('fct_grid_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,demand_mwh,demand_quality_status
+          A,2026-07-01 00:00:00,100.0,ok
+          B,2026-07-01 00:00:00,1000.0,suspect
+          A,2026-07-01 01:00:00,110.0,ok
+          B,2026-07-01 01:00:00,50.0,ok
+          C,2026-07-01 01:00:00,20.0,ok
+    expect:
+      format: csv
+      rows: |
+        scope_id,period_utc,demand_mwh,bas_expected,bas_reported,bas_flagged,is_complete
+        interconnection:Western,2026-07-01 00:00:00,100.0,3,2,1,false
+        region:CAL,2026-07-01 00:00:00,100.0,2,2,1,false
+        region:NW,2026-07-01 00:00:00,,1,0,0,false
+        lower_48:US48,2026-07-01 00:00:00,100.0,3,2,1,false
+        interconnection:Western,2026-07-01 01:00:00,180.0,3,3,0,true
+        region:CAL,2026-07-01 01:00:00,160.0,2,2,0,true
+        region:NW,2026-07-01 01:00:00,20.0,1,1,0,true
+        lower_48:US48,2026-07-01 01:00:00,180.0,3,3,0,true
+
+  - name: coverage_valid_means_reported_and_not_flagged
+    description: >
+      An ok value is reported and valid; a flagged spike is reported but not valid; an hour
+      with no row is neither.
+    model: fct_grid_coverage_hourly
+    given:
+      - input: ref('fct_grid_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,demand_mwh,demand_quality_status
+          PJM,2026-07-01 00:00:00,100.0,ok
+          PJM,2026-07-01 01:00:00,900.0,suspect
+          PJM,2026-07-01 03:00:00,105.0,ok
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,retirement_date
+          PJM,
+      - input: ref('time_spine_hourly')
+        format: csv
+        rows: |
+          date_hour
+          2026-07-01 00:00:00
+          2026-07-01 01:00:00
+          2026-07-01 02:00:00
+          2026-07-01 03:00:00
+    expect:
+      format: csv
+      rows: |
+        ba_code,period_utc,is_demand_reported,is_demand_valid
+        PJM,2026-07-01 00:00:00,true,true
+        PJM,2026-07-01 01:00:00,true,false
+        PJM,2026-07-01 02:00:00,false,false
+        PJM,2026-07-01 03:00:00,true,true

@@ -78,6 +78,7 @@ def score(planned: MetricRequest, expected: dict) -> list[str]:
 def run(brain: Brain, semantic: SemanticClient, settings: AgentSettings) -> dict:
     today, cases = load_cases()
     catalog, bas = semantic.catalog(), semantic.balancing_authorities()
+    saved = semantic.saved_queries()
     results = []
     for case in cases:
         reasons: list[str] = []
@@ -86,7 +87,7 @@ def run(brain: Brain, semantic: SemanticClient, settings: AgentSettings) -> dict
             if route != case.route:
                 reasons.append(f"route {route} != {case.route}")
             elif case.route == "metric":
-                planned = brain.plan(case.question, catalog, bas, today, [], None)
+                planned = brain.plan(case.question, catalog, bas, today, [], None, saved)
                 errors = validate(
                     planned,
                     catalog,
@@ -96,7 +97,7 @@ def run(brain: Brain, semantic: SemanticClient, settings: AgentSettings) -> dict
                 if (
                     errors
                 ):  # the graph would retry with these errors; give the planner the same chance
-                    planned = brain.plan(case.question, catalog, bas, today, errors, planned)
+                    planned = brain.plan(case.question, catalog, bas, today, errors, planned, saved)
                 reasons += score(planned, case.expected)
         except Exception as exc:  # a crash is a failed case, not a failed run
             reasons.append(f"{type(exc).__name__}: {exc}")

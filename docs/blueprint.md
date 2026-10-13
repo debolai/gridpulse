@@ -233,18 +233,19 @@ Metrics are defined once in the dbt project as semantic models and MetricFlow me
 
 | Metric | Definition | Unit | Notes for correct use |
 | --- | --- | --- | --- |
-| `demand` | Sum of hourly demand | MWh | Excludes rows flagged missing or spike |
+| `demand` | Sum of hourly demand | MWh | Excludes values flagged suspect or invalid (spikes, zeros) |
 | `peak_demand` | Maximum of hourly demand for one BA | MW | Not additive across BAs |
-| `coincident_peak_demand` | Maximum over hours of demand summed across selected BAs | MW | The correct "system peak" for a region |
+| `coincident_peak_demand` | Maximum over hours of demand summed across the BAs of one scope (interconnection, EIA region or US48; ADR-0008) | MW | The correct "system peak" for a region |
 | `forecast_error_mape` | Mean of absolute(actual − forecast) ÷ actual | % | Only hours where actual > 0 and both values pass quality checks |
 | `forecast_bias` | Mean of (forecast − actual) | MWh | Positive means the operator over-forecast |
 | `net_generation` | Sum of net generation | MWh |  |
 | `generation_by_fuel` | Sum of generation, by fuel dimension | MWh |  |
-| `renewable_share` | Sum of renewable generation ÷ sum of all generation | % | Ratio of sums, never an average of ratios |
+| `renewable_share` | Sum of renewable generation ÷ sum of generation from all fuels (both from the fuel-type report) | fraction | Ratio of sums, never an average of ratios |
 | `net_imports` | −1 × sum of total interchange | MWh | EIA reports exports as positive; this flips the sign so imports read positive |
 | `cooling_degree_hours` | Sum of max(temperature − 18.3, 0) | °C·h | Base 18.3 °C (65 °F), the U.S. convention |
-| `data_completeness` | Hours with valid values ÷ expected hours | % | Expected hours come from a generated hour spine |
-| `revision_rate` | Hours revised at least once ÷ hours published | % | From `fct_data_revisions` |
+| `data_completeness` | Hours with valid values ÷ expected hours | fraction | Valid = reported and not flagged; expected hours come from a generated hour spine |
+| `revision_rate` | Values revised at least once ÷ values re-checked (read by two or more loads) | fraction | From `fct_value_checks_hourly`; a value loaded once can't show a revision |
+| `flagged_values` | Count of demand, forecast and net generation values flagged suspect or invalid | values | What the other metrics left out; answers "how clean is the data" |
 
 **Dimensions.** Balancing authority, interconnection (Eastern, Western, ERCOT), fuel type, renewable flag, UTC hour, local hour, local date, month, peak-hour flag, and quality status.
 
@@ -252,15 +253,15 @@ Metrics are defined once in the dbt project as semantic models and MetricFlow me
 
 **Decision: separate `peak_demand` and `coincident_peak_demand`.** Why: adding each BA's own peak overstates the system peak because BAs peak at different hours. Two named metrics with clear descriptions stop analysts and the LLM from mixing them up.
 
-**Decision: expose an allow-list of metrics and saved queries to the agent.** Why: the agent sees only metrics tagged `agent: true` in their `meta` config, plus a few saved queries for common questions. Fewer choices mean fewer wrong ones, and the allow-list is reviewed in pull requests like any other code.
+**Decision: expose an allow-list of metrics and saved queries to the agent.** Why: the agent sees only metrics tagged `agent: true` in their `meta` config, plus a few saved queries for common questions. Fewer choices mean fewer wrong ones, and the allow-list is reviewed in pull requests like any other code (an integration test pins the exact list, so a change shows up in the diff). Saved queries are tagged `agent` (MetricFlow keeps tags, not `meta`, on saved queries) and hold only metrics and group-by: the semantic API serves them as request templates, and the agent's request still goes through the same validator. They are a guide, not a template to copy: copied verbatim they made the planner request extra metrics and group-bys (eval 71%, 96% after the prompt said so).
 
 **Decision: write descriptions and synonyms for the LLM in each metric's `description` and `meta`.** Why: the agent discovers metrics through the semantic API's catalog endpoint, which is built from dbt's semantic manifest. Descriptions such as "use this for regional system peak" and synonyms such as "load" for demand are what make natural-language questions map to the right metric.
 
 **Decision: use the current dbt semantic YAML spec, with each semantic model declared inside its model's YAML.** Why: from dbt v1.12, semantic models live alongside the model they describe, and simple metrics replace the older "measures" concept. Learning the current spec is what job descriptions ask for, and it keeps documentation in one place. Install dbt and MetricFlow together through the `dbt-metricflow` bundle so their versions stay compatible. If the `dbt-athena` adapter lags behind v1.12, use the earlier spec (separate `semantic_models` with measures); the concepts are the same.
 
-**Decision: cache results in the semantic API and turn on Athena query result reuse.** Why: most questions repeat over days and weeks. The API caches results keyed by the compiled SQL and the latest dbt run ID, so a cache entry expires exactly when new data lands, and Athena's result reuse avoids re-scanning for identical queries.
+**Decision: cache results in the semantic API and turn on Athena query result reuse.** Why: most questions repeat over days and weeks. The API caches results keyed by the compiled SQL and the latest dbt run ID, so a cache entry expires exactly when new data lands, and Athena's result reuse avoids re-scanning for identical queries. (2026-10-13: result reuse is deferred. dbt-athena 1.11 doesn't pass PyAthena's reuse option through, and the API cache already serves repeats.)
 
-**Decision: default filters for data quality.** Why: every metric excludes flagged rows unless the query explicitly asks for them, and the agent always reports the completeness of the data behind an answer.
+**Decision: default filters for data quality.** Why: every metric excludes flagged rows unless the query explicitly asks for them, and the agent always reports the completeness of the data behind an answer. How (2026-10-13): each metric's expression keeps a value only when its series' `quality_status` is `ok`, and the coincident-peak mart leaves flagged BAs out of each hour's sum. Over the AWS year this removes about 1,000 demand and 24,000 net generation values and changes 7 BAs' annual peaks; SPA's annual peak, for example, falls from 274 to 53 MW. Asking for flagged data means asking `flagged_values` how many there were; sums that include flagged values are not offered as metrics. Each metric's `meta.quality` says what it leaves out. The semantic API returns these notes with every result, and the agent appends them to its answer in code. No metric combines two EIA reports (renewable share uses the fuel-type report alone), so the unreconciled hours of ADR-0006 don't enter any metric.
 
 **Decision: serve metrics through a small self-hosted semantic API that wraps open-source MetricFlow.** Why: the hosted dbt Semantic Layer APIs need a paid dbt platform plan (or a time-limited trial) and do not list Athena among supported platforms. MetricFlow itself is Apache 2.0 licensed and works as a Python library that compiles metric requests into SQL using a dbt project and adapter. A FastAPI service with three endpoints (`GET /metrics`, `POST /compile`, `POST /query`) gives the agent the same contract the hosted API would, and building it shows you understand what a semantic layer does under the hood.
 
@@ -554,3 +555,7 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — History window cut to one year (from 2025-10-01), loaded once with `make backfill-aws` from the laptop (ADR-0005); July 2018 becomes an optional extension.
 - 2026-10-13 — One-year backfill done (63 BAs, 2025-10-01..2026-10-12). Staging now drops EIA's regional and US48 aggregate respondents (seed `eia_aggregate_respondents`). Reconciliation tests warn by default at full scale (ADR-0006).
 - 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).
+- 2026-10-13 — B3 slice 1: `dim_fuel_type` is a semantic model (entity `fuel_type`); `generation_by_fuel`, `renewable_generation` and `net_generation` added; `renewable_share` divides by the fuel total from the same fuel-type report (not region-data net generation, which disagrees for some BAs per ADR-0006) and is returned as a fraction like `data_completeness`.
+- 2026-10-13 — B3 slice 2: `net_imports` (−1 × total interchange) and `coincident_peak_demand` over fixed scopes from the new mart `fct_demand_scope_hourly` (MetricFlow can't sum then max; ADR-0008). Boolean dimensions are named `is_*` and the semantic API renders their filters as TRUE/FALSE.
+- 2026-10-13 — B3 slice 3: `cooling_degree_hours` on `fct_grid_hourly`; `revision_rate` divides revised values by values re-checked (read by at least two loads), not by all published hours, because history loaded in one pass can never show a revision. New incremental mart `fct_value_checks_hourly` (route × BA × item × hour) and shared view `int_eia__observations` (the three routes in one shape, also feeding `int_grid__revisions`).
+- 2026-10-13 — B3 slice 4: metrics leave out flagged values by default (quality notes returned with results and appended to answers); `data_completeness` counts valid hours; new `flagged_values` metric; coincident peak sums only valid BAs; five agent saved queries as request templates; Athena result reuse deferred (dbt-athena doesn't expose it).

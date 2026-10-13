@@ -23,6 +23,7 @@ class Brain(Protocol):
         today: date,
         errors: list[str],
         previous: MetricRequest | None,
+        saved_queries: list[dict] = (),
     ) -> MetricRequest: ...
 
     def answer(
@@ -73,7 +74,7 @@ class LLMBrain:
     def route(self, question):
         return self._router.invoke(prompts.ROUTER.format(question=question))
 
-    def plan(self, question, catalog, bas, today, errors, previous):
+    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
         feedback = (
             prompts.PLAN_FEEDBACK.format(
                 errors="\n".join(f"- {e}" for e in errors),
@@ -87,6 +88,7 @@ class LLMBrain:
                 today=today.isoformat(),
                 bas="\n".join(f"{code}: {name}" for code, name in bas),
                 catalog=prompts.catalog_json(catalog),
+                saved_queries=prompts.saved_queries_text(saved_queries),
                 feedback=feedback,
                 question=question,
             )
