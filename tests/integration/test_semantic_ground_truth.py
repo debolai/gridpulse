@@ -155,6 +155,74 @@ def test_renewable_share_is_a_ratio_of_sums(api, sql):
     assert any(not math.isclose(got[ba], hourly_mean[ba], rel_tol=1e-3) for ba in got)
 
 
+def test_renewable_flag_filter(api, sql):
+    expected = sql(
+        f"""SELECT f.ba_code, sum(f.generation_mwh) FROM marts.fct_generation_by_fuel_hourly f
+        JOIN marts.dim_fuel_type d ON d.fuel_code = f.fuel_code
+        WHERE {WINDOW_SQL} AND NOT d.is_renewable GROUP BY 1"""
+    )
+    filters = [{"dimension": "fuel_type__is_renewable", "values": ["false"]}]
+    assert_same(by_ba(api, "generation_by_fuel", filters=filters), expected)
+
+
+def test_net_imports_flips_the_interchange_sign(api, sql):
+    expected = sql(
+        f"""SELECT ba_code, -sum(total_interchange_mwh) FROM marts.fct_grid_hourly
+        WHERE {WINDOW_SQL} GROUP BY 1"""
+    )
+    assert_same(by_ba(api, "net_imports"), expected)
+
+
+# Written from BA-hours, not from fct_demand_scope_hourly, so it checks the mart as well.
+COINCIDENT_SQL = f"""SELECT interconnection, max(total) FROM (
+    SELECT b.interconnection, g.period_utc, sum(g.demand_mwh) AS total
+    FROM marts.fct_grid_hourly g
+    JOIN marts.dim_balancing_authority b ON b.ba_code = g.ba_code
+    WHERE {WINDOW_SQL} GROUP BY 1, 2)
+GROUP BY 1"""
+
+
+def coincident_by_interconnection(api, **extra) -> dict:
+    resp = api.post(
+        "/query",
+        json={
+            "metrics": ["coincident_peak_demand"],
+            "group_by": ["demand_scope__scope_code"],
+            "filters": [
+                {"dimension": "demand_scope__scope_type", "values": ["interconnection"]},
+                *extra.pop("filters", []),
+            ],
+            "start": START.isoformat(),
+            "end": END.isoformat(),
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return {row[0]: row[1] for row in resp.json()["rows"]}
+
+
+def test_coincident_peak_is_the_max_of_combined_hours(api, sql):
+    got = coincident_by_interconnection(api)
+    assert_same(got, sql(COINCIDENT_SQL))
+    own_peaks = sql(
+        f"""SELECT b.interconnection, sum(p) FROM (
+            SELECT ba_code, max(demand_mwh) AS p FROM marts.fct_grid_hourly
+            WHERE {WINDOW_SQL} GROUP BY 1) x
+        JOIN marts.dim_balancing_authority b ON b.ba_code = x.ba_code GROUP BY 1"""
+    )
+    # BAs peak at different hours, so the combined peak sits below the sum of their own peaks
+    # wherever an interconnection has more than one BA.
+    assert got["Eastern"] < own_peaks["Eastern"]
+
+
+def test_coincident_peak_can_skip_incomplete_hours(api, sql):
+    expected = sql(
+        f"""SELECT scope_code, max(demand_mwh) FROM marts.fct_demand_scope_hourly
+        WHERE {WINDOW_SQL} AND scope_type = 'interconnection' AND is_complete GROUP BY 1"""
+    )
+    complete = [{"dimension": "demand_scope__is_complete", "values": ["true"]}]
+    assert_same(coincident_by_interconnection(api, filters=complete), expected)
+
+
 def test_demand_month_to_date_shows_end_of_day_running_total(api, sql):
     expected = sql(
         """SELECT cast(day_utc AS varchar), mtd FROM (
@@ -206,6 +274,8 @@ def test_catalog_exposes_agent_allow_list(api):
         "net_generation",
         "generation_by_fuel",
         "renewable_share",
+        "net_imports",
+        "coincident_peak_demand",
     } <= agent
     assert "expected_hours" not in agent  # building blocks stay hidden from the agent
 

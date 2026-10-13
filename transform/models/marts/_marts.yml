@@ -91,7 +91,7 @@ models:
           Highest single-hour demand of one balancing authority in the period (MWh in one
           hour = average MW). NOT a system peak: when grouped across several BAs it returns
           the largest individual BA-hour, not the combined peak. For a region's combined
-          peak use coincident_peak_demand (added later).
+          peak use coincident_peak_demand.
         type: simple
         agg: max
         expr: demand_mwh
@@ -133,6 +133,19 @@ models:
         expr: net_generation_mwh
         config:
           meta: {agent: true, unit: MWh, additive: true, synonyms: [generation, output, production]}
+      - name: net_imports
+        label: Net imports (MWh)
+        description: >
+          Electricity the BA took in from its neighbours minus what it sent out, MWh: -1 x
+          total interchange (EIA reports exports as positive; this flips the sign so imports
+          read positive). Negative = net exporter. Summed over several BAs, flows between them
+          roughly cancel, leaving the group's exchange with everyone else.
+          Synonyms: imports, interchange, power imported.
+        type: simple
+        agg: sum
+        expr: -1 * total_interchange_mwh
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [imports, interchange, power imported]}
       - name: demand_month_to_date
         label: Demand, month to date (MWh)
         description: Cumulative demand from the start of each month.
@@ -314,6 +327,102 @@ models:
         data_type: boolean
       - name: is_interchange_reported
         data_type: boolean
+
+  - name: fct_demand_scope_hourly
+    description: >
+      Hourly demand summed over standard groups of balancing authorities (each
+      interconnection, each EIA region, the Lower 48). Grain: scope x UTC hour. Every expected
+      hour is kept; bas_reported / bas_expected show how complete each hour is. The basis for
+      coincident_peak_demand.
+    semantic_model:
+      enabled: true
+      name: demand_scope_hourly
+    primary_entity: demand_scope
+    agg_time_dimension: period_utc
+    metrics:
+      - name: coincident_peak_demand
+        label: Coincident peak demand (MW)
+        description: >
+          System peak of a group of balancing authorities: the highest hour of their COMBINED
+          demand (MWh in one hour = average MW). Always filter or group by
+          demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region
+          (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each
+          BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not
+          supported. A BA that didn't report lowers that hour's total; filter
+          demand_scope__is_complete = true to use only hours where every BA reported.
+          Synonyms: system peak, regional peak, combined peak.
+        type: simple
+        agg: max
+        expr: demand_mwh
+        config:
+          meta:
+            agent: true
+            unit: MW
+            additive: false
+            synonyms: [system peak, regional peak, combined peak, grid peak]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [scope_id, period_utc]
+    columns:
+      - name: scope_type
+        data_type: varchar
+        description: interconnection, region or lower_48.
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["interconnection", "region", "lower_48"]
+        dimension:
+          type: categorical
+          name: scope_type
+          description: Kind of group - interconnection, region (EIA region) or lower_48.
+      - name: scope_id
+        data_type: varchar
+        description: scope_type and scope_code together, e.g. "region:CAL" (unique per hour).
+        constraints:
+          - type: not_null
+      - name: scope_code
+        data_type: varchar
+        description: Eastern / Western / ERCOT, an EIA region code (CAL, TEX, ...), or US48.
+        constraints:
+          - type: not_null
+        dimension:
+          type: categorical
+          name: scope_code
+          description: >
+            The group: Eastern, Western or ERCOT (interconnections), an EIA region code such as
+            CAL, TEX, MIDA, NY, NE, FLA, MIDW, CENT, CAR, SE, TEN, SW, NW, or US48.
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour, UTC.
+        constraints:
+          - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: Start of the hour in UTC.
+      - name: demand_mwh
+        data_type: double
+        description: Sum of reported demand across the scope's BAs for the hour, MWh.
+      - name: bas_expected
+        data_type: integer
+        description: BAs in the scope that should have reported demand this hour.
+      - name: bas_reported
+        data_type: integer
+        description: BAs in the scope that did report demand this hour.
+      - name: bas_flagged
+        data_type: integer
+        description: BAs whose demand this hour is flagged suspect or invalid (still summed).
+      - name: is_complete
+        data_type: boolean
+        description: True when every expected BA reported demand this hour.
+        dimension:
+          type: categorical
+          name: is_complete
+          description: True when every BA in the group reported demand for the hour.
 
   - name: dim_fuel_type
     description: >

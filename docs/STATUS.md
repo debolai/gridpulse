@@ -8,10 +8,10 @@ Last updated: 2026-10-13
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase B3 (full semantic layer) on `feat/b3-semantic-layer`: slice 1 (generation metrics) done; next slice 2 (net imports, coincident peak). (Phase A closes when TODO #11 lands; see Next up.)
+- Phase B3 (full semantic layer) on `feat/b3-semantic-layer`: slices 1-2 done (generation, net imports, coincident peak); next slice 3 (cooling degree hours, revision rate). (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. B3 slices: 2 net imports + coincident peak; 3 cooling degree hours + revision rate; 4 quality defaults (exclude flagged and unreconciled hours; update the 6 A4 reference tests and rerun the agent eval), agent allow-list, saved queries, cache
+1. B3 slices: 3 cooling degree hours + revision rate; 4 quality defaults (exclude flagged and unreconciled hours; update the 6 A4 reference tests and rerun the agent eval), agent allow-list, saved queries, cache
 2. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
@@ -70,6 +70,7 @@ Repo: https://github.com/debolai/gridpulse
   - [x] Slice 4: one-year backfill on AWS — 2026-10-13. `make backfill-aws START=2025-10-01 END=2026-10-13` (ADR-0005): 39 monthly chunks (3 routes × 13 months) in two lanes, 1,952 API requests, 9,663,516 rows appended, every chunk's rows_received = rows_expected, no failures, about 70 min (EIA answers in 3–4 s per page); a rerun skips all 39. NOAA for the same year: 269,992 reports from all 21 stations in 22 s. `make dbt-build-aws ARGS=--full-refresh`: 63 BAs, 541,488 BA-hours (2025-10-01 → 2026-10-12 23:00), 2,902,848 fuel rows, 2,557,022 interchange rows; `dbt test` on Athena PASS=111 WARN=3 ERROR=0 (fuel reconciliation 9 BAs, interchange 21 BAs, freshness: the AWS lake isn't scheduled); Trino PASS=114. The first all-BA build found EIA's aggregate respondents (13 regions + US48) in all three routes, about 127k fact rows with no BA: staging now drops them (seed `eia_aggregate_respondents`, overlap test).
 - [ ] B3 Full semantic layer (12 metrics, saved queries, allow-list, cache)
   - [x] Slice 1: generation metrics — 2026-10-13. `dim_fuel_type` semantic model (entity `fuel_type`; dimensions `fuel_name`, `fuel_category`, `is_renewable`); `fct_generation_by_fuel_hourly` semantic model (entities `balancing_authority`, `fuel_type`; `period_utc`, `date_local`, `hour_local`); metrics `net_generation`, `generation_by_fuel`, `renewable_generation` (metric filter on `fuel_type__is_renewable`), `renewable_share` (ratio over the fuel total, fraction). Evidence: `mf validate-configs` 0 errors/0 warnings incl. warehouse checks on Trino and Athena; `test_semantic_ground_truth.py` 13 passed (new: net generation, generation by BA × fuel category, renewable share = ratio of sums and differs from the mean of hourly shares); the share test fails when the filter is flipped; July renewable_share / generation_by_fuel / net_generation for the 6 sample BAs IDENTICAL on Trino and Athena (CISO 0.593, ERCO 0.370, PJM 0.070). Agent prompt knows the fuel dimensions and that renewable_share is a fraction (eval rerun in slice 4).
+  - [x] Slice 2: net imports + coincident peak — 2026-10-13. `net_imports` on grid_hourly (−1 × TI). New mart `fct_demand_scope_hourly` (scope × hour: each interconnection, EIA region and US48; `bas_expected`/`bas_reported`/`bas_flagged`, `is_complete`) with metric `coincident_peak_demand` (ADR-0008: MetricFlow has no sum-then-max metric). Agent validator requires one `demand_scope__scope_code`; prompt hints added. Fixed: filters on boolean dimensions failed (`boolean = varchar`); `is_*` dimensions now render as TRUE/FALSE (unit tests). Evidence: `mf validate-configs` 0/0 on Trino and Athena; ground truth 17 passed (new: renewable flag filter, net imports, coincident peak from BA-hours < sum of own peaks, complete-hours filter); the coincident test fails when the mart takes max instead of sum; July net imports IDENTICAL on both engines; full year on Athena matches EIA's published aggregates exactly at the peak (US48 753,630 MW on 2026-07-02 22:00 UTC, all 53 BAs reporting; CAL 61,700; TEX 91,075), median hourly gap 0, p99 1.1%.
 - [ ] B4 Full agent (clarify, inspect, checkpointer, 50-question golden set, nightly eval)
 - [ ] B5 CI/CD (slim CI, local-target CI, Terraform plan comments, cd.yml with approval, rollback, pr-cleanup)
 - [ ] B6 Polish (Elementary observability + report, README, video, dbt docs, ADR index, cost report, data-issue write-up)
@@ -80,6 +81,7 @@ Repo: https://github.com/debolai/gridpulse
 - B2: weather and quality-flag models are full-rebuild tables (a spike or an interpolated hour depends on neighbours); revisit with partition-scoped rebuilds before extending the history beyond one year (ADR-0005).
 - B2: the weather seed covers only the six sample BAs; extend it before loading all BAs.
 - B3: metrics exclude flagged values by default and say so (blueprint "flag bad values"); needs the semantic ground-truth tests updated alongside.
+- B3+: coincident peak for ISO/RTO footprints or arbitrary BA sets (ADR-0008); today only interconnection, EIA region and US48.
 - Per-BA-hour reconciliation outcome as a column (today the reconciliation is a test-level pass rate).
 
 ## Findings to fold into the build
@@ -160,3 +162,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — Owner dropped the B2 7-day freshness soak (ADR-0007, blueprint updated) and approved the B2 PR; branch pushed and PR opened.
 - 2026-10-13 — PR #3 merged (B2 done; CI green on all four checks). Next: B3.
 - 2026-10-13 — B3 started on `feat/b3-semantic-layer`. Slice 1 done: net generation, generation by fuel, renewable share (fuel-type report as denominator), validated on Trino and Athena. Tutorial ch. 06 updated. Next: slice 2.
+- 2026-10-13 — B3 slice 2 done: net imports; coincident peak over fixed scopes via `fct_demand_scope_hourly` (ADR-0008), matching EIA's US48/CAL/TEX aggregates; boolean filter bug fixed. Next: slice 3.

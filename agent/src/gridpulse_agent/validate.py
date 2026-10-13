@@ -5,6 +5,10 @@ from gridpulse_agent.contract import MetricRequest
 
 GRAINS = ("hour", "day", "week", "month", "quarter", "year")
 PER_BA_METRICS = {"peak_demand"}  # max of single BA-hours: meaningless when BAs are pooled
+# Max of combined hours per scope (interconnection, region, US48): pooling scope types mixes
+# a region's peak with the Lower 48's.
+PER_SCOPE_METRICS = {"coincident_peak_demand"}
+SCOPE = "demand_scope__scope_code"
 
 
 def _base(name: str) -> str:
@@ -50,7 +54,18 @@ def validate(
         if pooled and not single_ba:
             errors.append(
                 f"{metric} is the highest single BA-hour; across several BAs it is not a "
-                f"combined peak. Group by balancing_authority or filter to one BA."
+                f"combined peak. Group by balancing_authority or filter to one BA "
+                f"(for a combined peak use coincident_peak_demand)."
+            )
+
+    scoped = SCOPE in request.group_by or any(
+        f.dimension == SCOPE and f.op == "=" for f in request.filters
+    )
+    for metric in PER_SCOPE_METRICS & set(request.metrics):
+        if not scoped:
+            errors.append(
+                f"{metric} needs one scope: filter {SCOPE} = an interconnection (Eastern, "
+                f"Western, ERCOT), an EIA region (CAL, TEX, ...) or US48, or group by {SCOPE}."
             )
 
     if request.end <= request.start:

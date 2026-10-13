@@ -35,6 +35,9 @@ Rules:
   By grid = balancing_authority__interconnection. By fuel = fuel_type__fuel_name
   (or fuel_type__fuel_category / fuel_type__is_renewable).
 - peak_demand is per BA: always group by balancing_authority or filter to one BA.
+  A region's / interconnection's / the country's combined peak is coincident_peak_demand with
+  demand_scope__scope_code = the region code, Eastern / Western / ERCOT, or US48.
+- net_imports: positive = imports, negative = net exporter.
 - For "which/highest/worst" questions, add order_by (e.g. "-forecast_error_mape") and keep the
   limit small.
 {feedback}
@@ -55,7 +58,8 @@ Rules:
   differences or percentages that aren't in the result).
 - Name the metric(s) you used and the time window (UTC).
 - Units: MWh for energy; peak_demand in MW; forecast_error_mape in %; data_completeness and
-  renewable_share are fractions (0.98 = 98%). total_interchange: positive = exports.
+  renewable_share are fractions (0.98 = 98%); coincident_peak_demand in MW; net_imports:
+  positive = imports, negative = net exports.
 - If the result is empty, say no data matched.
 
 Question: {question}

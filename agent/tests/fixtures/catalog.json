@@ -127,5 +127,27 @@
    "grid_hour__period_utc",
    "metric_time__hour"
   ]
+ },
+ {
+  "name": "coincident_peak_demand",
+  "label": "Coincident peak demand (MW)",
+  "description": "System peak of a group of balancing authorities: the highest hour of their COMBINED demand (MWh in one hour = average MW). Always filter or group by demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not supported. A BA that didn't report lowers that hour's total; filter demand_scope__is_complete = true to use only hours where every BA reported. Synonyms: system peak, regional peak, combined peak.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MW",
+  "additive": false,
+  "synonyms": [
+   "system peak",
+   "regional peak",
+   "combined peak",
+   "grid peak"
+  ],
+  "dimensions": [
+   "demand_scope__is_complete",
+   "demand_scope__period_utc",
+   "demand_scope__scope_code",
+   "demand_scope__scope_type",
+   "metric_time__hour"
+  ]
  }
 ]

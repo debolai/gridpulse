@@ -73,6 +73,34 @@ def test_peak_demand_per_ba_is_fine(catalog, overrides):
     assert check(req(**overrides), catalog) == []
 
 
+@pytest.mark.parametrize(
+    "overrides,ok",
+    [
+        ({"metrics": ["coincident_peak_demand"]}, False),
+        (
+            {
+                "metrics": ["coincident_peak_demand"],
+                "filters": [
+                    {"dimension": "demand_scope__scope_code", "op": "in", "values": ["CAL", "TEX"]}
+                ],
+            },
+            False,
+        ),
+        (
+            {
+                "metrics": ["coincident_peak_demand"],
+                "filters": [{"dimension": "demand_scope__scope_code", "values": ["Western"]}],
+            },
+            True,
+        ),
+        ({"metrics": ["coincident_peak_demand"], "group_by": ["demand_scope__scope_code"]}, True),
+    ],
+)
+def test_coincident_peak_needs_one_scope(catalog, overrides, ok):
+    errors = check(req(**overrides), catalog)
+    assert (errors == []) is ok, errors
+
+
 def test_window_limits(catalog):
     assert check(req(start="2026-10-01T00:00:00Z", end="2026-09-01T00:00:00Z"), catalog)
     assert check(req(start="2024-01-01T00:00:00Z", end="2026-01-01T00:00:00Z"), catalog)

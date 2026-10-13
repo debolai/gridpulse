@@ -34,7 +34,17 @@ class Filter(BaseModel):
     def _single_value_ops(self) -> "Filter":
         if self.op in ("=", "!=") and len(self.values) != 1:
             raise ValueError(f"op {self.op!r} takes exactly one value")
+        if self.is_boolean:
+            self.values = [v.lower() for v in self.values]
+            if not set(self.values) <= {"true", "false"}:
+                raise ValueError(f"{self.dimension} is true/false; got {self.values}")
         return self
+
+    @property
+    def is_boolean(self) -> bool:
+        """Boolean dimensions are named is_* (project convention), e.g. fuel_type__is_renewable.
+        Their values are rendered as TRUE/FALSE: a quoted 'true' fails on Trino and Athena."""
+        return self.dimension.rsplit("__", 1)[-1].startswith("is_")
 
 
 class MetricRequest(BaseModel):
@@ -96,10 +106,11 @@ def render_where(request: MetricRequest, entity_names: set[str]) -> list[str]:
             if f.dimension in entity_names
             else f"{{{{ Dimension('{f.dimension}') }}}}"
         )
+        render = (lambda v: v.upper()) if f.is_boolean else _literal
         if f.op in ("=", "!="):
-            where.append(f"{ref} {f.op} {_literal(f.values[0])}")
+            where.append(f"{ref} {f.op} {render(f.values[0])}")
         else:
-            where.append(f"{ref} {f.op.upper()} ({', '.join(_literal(v) for v in f.values)})")
+            where.append(f"{ref} {f.op.upper()} ({', '.join(render(v) for v in f.values)})")
     metric_hour = "{{ TimeDimension('metric_time', 'hour') }}"
     if request.start is not None:
         where.append(f"{metric_hour} >= {_timestamp(request.start)}")

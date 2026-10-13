@@ -235,7 +235,7 @@ Metrics are defined once in the dbt project as semantic models and MetricFlow me
 | --- | --- | --- | --- |
 | `demand` | Sum of hourly demand | MWh | Excludes rows flagged missing or spike |
 | `peak_demand` | Maximum of hourly demand for one BA | MW | Not additive across BAs |
-| `coincident_peak_demand` | Maximum over hours of demand summed across selected BAs | MW | The correct "system peak" for a region |
+| `coincident_peak_demand` | Maximum over hours of demand summed across the BAs of one scope (interconnection, EIA region or US48; ADR-0008) | MW | The correct "system peak" for a region |
 | `forecast_error_mape` | Mean of absolute(actual − forecast) ÷ actual | % | Only hours where actual > 0 and both values pass quality checks |
 | `forecast_bias` | Mean of (forecast − actual) | MWh | Positive means the operator over-forecast |
 | `net_generation` | Sum of net generation | MWh |  |
@@ -555,3 +555,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — One-year backfill done (63 BAs, 2025-10-01..2026-10-12). Staging now drops EIA's regional and US48 aggregate respondents (seed `eia_aggregate_respondents`). Reconciliation tests warn by default at full scale (ADR-0006).
 - 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).
 - 2026-10-13 — B3 slice 1: `dim_fuel_type` is a semantic model (entity `fuel_type`); `generation_by_fuel`, `renewable_generation` and `net_generation` added; `renewable_share` divides by the fuel total from the same fuel-type report (not region-data net generation, which disagrees for some BAs per ADR-0006) and is returned as a fraction like `data_completeness`.
+- 2026-10-13 — B3 slice 2: `net_imports` (−1 × total interchange) and `coincident_peak_demand` over fixed scopes from the new mart `fct_demand_scope_hourly` (MetricFlow can't sum then max; ADR-0008). Boolean dimensions are named `is_*` and the semantic API renders their filters as TRUE/FALSE.

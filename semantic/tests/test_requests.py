@@ -47,6 +47,25 @@ def test_values_are_escaped_not_injected():
     assert clause.endswith("= 'x'' OR ''1''=''1'")
 
 
+def test_boolean_dimensions_render_as_boolean_literals():
+    req = MetricRequest(
+        metrics=["generation_by_fuel"],
+        filters=[
+            Filter(dimension="fuel_type__is_renewable", values=["True"]),
+            Filter(dimension="demand_scope__is_complete", op="in", values=["true", "false"]),
+        ],
+    )
+    assert render_where(req, ENTITIES) == [
+        "{{ Dimension('fuel_type__is_renewable') }} = TRUE",
+        "{{ Dimension('demand_scope__is_complete') }} IN (TRUE, FALSE)",
+    ]
+
+
+def test_boolean_dimensions_reject_other_values():
+    with pytest.raises(ValidationError, match="true/false"):
+        Filter(dimension="fuel_type__is_renewable", values=["1) OR (1=1"])
+
+
 @pytest.mark.parametrize(
     "bad",
     [
