@@ -20,3 +20,9 @@ variable "monthly_budget_usd" {
   type        = number
   default     = 50
 }
+
+variable "github_repository" {
+  description = "GitHub repository (owner/name) whose Actions may assume the CI and deploy roles."
+  type        = string
+  default     = "debolai/gridpulse"
+}

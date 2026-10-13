@@ -1,6 +1,6 @@
 # Always-on foundation for the dev environment: costs cents to a few dollars a month and
 # holds the data, so it stays up while compute (EKS, RDS, NAT) is created only for demos.
-# ECR, IAM workload roles, GitHub OIDC and SSM parameters join in phase A6.
+# GitHub OIDC (B5) lets GitHub Actions use short-lived roles instead of stored keys.
 
 module "lake" {
   source = "../../../modules/lake"
@@ -24,4 +24,14 @@ module "budgets" {
 module "ecr" {
   source     = "../../../modules/ecr"
   components = ["ingestion", "transform", "semantic", "agent"]
+}
+
+module "github_oidc" {
+  source                = "../../../modules/github_oidc"
+  env                   = var.env
+  region                = var.region
+  repository            = var.github_repository
+  lake_bucket           = module.lake.bucket_names["lake"]
+  athena_results_bucket = module.lake.bucket_names["athena_results"]
+  athena_workgroup      = "gridpulse-${var.env}"
 }
