@@ -102,10 +102,20 @@ def _k8s_env_from(component: str) -> list:
     ]
 
 
+# Task pod sizes (requests = limits for memory, so a heavy backfill can't starve the node).
+K8S_MEMORY = {"extractor": "1Gi", "dbt": "1Gi", "agent": "512Mi"}
+
+
 def _k8s_task(component: str) -> dict:
+    from kubernetes.client import models as k8s
+
+    memory = K8S_MEMORY[component]
     return {
         "namespace": K8S_NAMESPACE,
         "env_from": _k8s_env_from(component),
+        "container_resources": k8s.V1ResourceRequirements(
+            requests={"cpu": "100m", "memory": memory}, limits={"memory": memory}
+        ),
         "service_account_name": f"gridpulse-{component}",
         "get_logs": True,
         "on_finish_action": "delete_succeeded_pod",

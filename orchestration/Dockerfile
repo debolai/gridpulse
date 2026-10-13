@@ -14,7 +14,7 @@ ARG COSMOS_VERSION=1.15.1
 ARG CONSTRAINTS=https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-3.12.txt
 USER airflow
 RUN pip install --no-cache-dir \
-      "apache-airflow[postgres,docker,cncf.kubernetes,slack]==${AIRFLOW_VERSION}" \
+      "apache-airflow[postgres,docker,cncf.kubernetes,amazon,slack]==${AIRFLOW_VERSION}" \
       "astronomer-cosmos==${COSMOS_VERSION}" \
       --constraint "${CONSTRAINTS}"
 # The dbt graph Cosmos renders and the weather stations the NOAA DAG loads (one source of truth).

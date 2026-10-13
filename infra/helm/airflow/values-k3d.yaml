@@ -1,0 +1,30 @@
+# Local overrides for the k3d cluster (local/k3d/cluster.yaml). Everything here points at the
+# compose lake by its service names; the passwords are the local stack's dummy credentials.
+data:
+  metadataConnection:
+    user: gridpulse
+    pass: gridpulse
+    protocol: postgresql
+    host: postgres
+    port: 5432
+    db: airflow_k8s
+    sslmode: disable
+
+env:
+  - name: GRIDPULSE_TASK_RUNTIME
+    value: kubernetes
+  # The semantic API runs on the host during local development (`make semantic-api`).
+  - name: GRIDPULSE_SEMANTIC_API_URL
+    value: http://host.k3d.internal:8090
+  # Task logs in SeaweedFS (bucket gridpulse-local-logs), like S3 on AWS.
+  - name: AIRFLOW_CONN_GRIDPULSE_LOGS
+    value: >-
+      {"conn_type": "aws", "login": "gridpulse-local", "password": "gridpulse-local-secret",
+      "extra": {"endpoint_url": "http://seaweedfs:8333", "region_name": "local-01"}}
+
+config:
+  core:
+    # Local only: no login screen. EKS uses real users.
+    simple_auth_manager_all_admins: "True"
+  logging:
+    remote_base_log_folder: s3://gridpulse-local-logs/airflow

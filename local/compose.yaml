@@ -48,11 +48,11 @@ services:
     image: chrislusf/seaweedfs:4.47@sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
     labels: *labels
     # `mini` = single-process dev mode (master + volume + filer + S3 gateway).
-    # Buckets mirror the AWS layout: raw (API responses) and lake (Iceberg tables).
+    # Buckets mirror the AWS layout: raw (API responses), lake (Iceberg tables), logs (Airflow).
     command:
       - mini
       - -dir=/data
-      - -bucket=gridpulse-local-raw,gridpulse-local-lake
+      - -bucket=gridpulse-local-raw,gridpulse-local-lake,gridpulse-local-logs
       - -s3.config=/etc/seaweedfs/s3.json
     volumes:
       - seaweedfs-data:/data
@@ -149,7 +149,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        for db in lakekeeper airflow; do
+        for db in lakekeeper airflow airflow_k8s; do
           psql -h postgres -U gridpulse -d gridpulse -tc "SELECT 1 FROM pg_database WHERE datname='$$db'" \
             | grep -q 1 || psql -h postgres -U gridpulse -d gridpulse -c "CREATE DATABASE $$db"
         done

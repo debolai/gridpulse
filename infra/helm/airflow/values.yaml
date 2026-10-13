@@ -1,0 +1,68 @@
+# Airflow 3 on Kubernetes, official chart apache-airflow/airflow 1.22.0 (pinned in the Makefile).
+# Shared by k3d (values-k3d.yaml) and EKS. KubernetesExecutor: every task runs in its own pod,
+# and the extract/dbt/agent work runs in a further pod of its own image (KubernetesPodOperator),
+# so this image carries only Airflow, its providers, Cosmos and the DAGs (baked in).
+airflowVersion: "3.3.2"
+defaultAirflowTag: "3.3.2"
+executor: KubernetesExecutor
+
+images:
+  airflow:
+    repository: gridpulse/orchestration
+    tag: local
+    pullPolicy: IfNotPresent
+
+# The chart's bundled Postgres and Redis are not used: metadata lives in the shared Postgres
+# (compose locally, RDS on AWS) and there is no Celery broker.
+postgresql:
+  enabled: false
+redis:
+  enabled: false
+statsd:
+  enabled: false
+# Airflow 3's simple auth manager; the chart's default (FAB) isn't installed in the slim image.
+createUserJob:
+  enabled: false
+# A plain Job rather than a post-install hook: with `helm --wait` the hook would only run after
+# the pods are ready, and the pods wait for the migrations (a deadlock).
+migrateDatabaseJob:
+  useHelmHooks: false
+  applyCustomEnv: false
+
+env:
+  - name: GRIDPULSE_TASK_RUNTIME
+    value: kubernetes
+
+config:
+  core:
+    auth_manager: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    load_examples: "False"
+    dags_are_paused_at_creation: "False"
+  logging:
+    # Worker pods are deleted after each task, so logs go to object storage.
+    remote_logging: "True"
+    remote_log_conn_id: gridpulse_logs
+
+# Every pod sets requests and limits (blueprint: Kubernetes layout).
+scheduler:
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+apiServer:
+  resources:
+    requests: {cpu: 100m, memory: 512Mi}
+    limits: {memory: 1Gi}
+dagProcessor:
+  resources:
+    requests: {cpu: 100m, memory: 384Mi}
+    limits: {memory: 768Mi}
+triggerer:
+  persistence:
+    enabled: false
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+workers:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 768Mi}
