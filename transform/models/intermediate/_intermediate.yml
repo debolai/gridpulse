@@ -59,6 +59,28 @@ models:
       - name: ingested_at_utc
         data_tests: [not_null]
 
+  - name: int_grid__quality_flags
+    description: >
+      Data-quality flags per balancing authority, series and hour (missing, zero, negative,
+      one-hour spike) and a per-series quality_status: ok, suspect, invalid or missing. Bad
+      values are flagged, never deleted. Grain: BA × series × hour.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, series_code, period_utc]
+    columns:
+      - name: quality_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["ok", "suspect", "invalid", "missing"]
+      - name: is_spike
+        description: >
+          Differs from both adjacent hours by more than var('spike_threshold') in the same
+          direction. Only for D, DF and NG; never across a gap in the data.
+        data_tests: [not_null]
+
 unit_tests:
   - name: latest_observation_wins_even_when_value_reverts
     description: >
@@ -83,3 +105,55 @@ unit_tests:
         ba_code,series_code,period_utc,value_mwh,run_id,ingested_at_utc
         PJM,D,2026-10-01 00:00:00,100.0,r3,2026-10-03 02:00:00
         PJM,NG,2026-10-01 00:00:00,90.0,r1,2026-10-01 02:00:00
+
+  - name: quality_flags_catch_spikes_zeros_and_gaps_but_not_level_shifts
+    description: >
+      One-hour spikes up and down are flagged; a level shift is not; demand of 0 is invalid;
+      a null is missing; negative net generation is suspect; interchange changing sign is ok;
+      a value after a gap is not compared with a non-adjacent hour.
+    model: int_grid__quality_flags
+    given:
+      - input: ref('int_grid__latest_values')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,value_mwh
+          AAA,D,2026-10-01 00:00:00,100
+          AAA,D,2026-10-01 01:00:00,100
+          AAA,D,2026-10-01 02:00:00,300
+          AAA,D,2026-10-01 03:00:00,100
+          AAA,D,2026-10-01 04:00:00,0
+          AAA,D,2026-10-01 05:00:00,100
+          AAA,D,2026-10-01 06:00:00,
+          AAA,DF,2026-10-01 00:00:00,100
+          AAA,DF,2026-10-01 01:00:00,100
+          AAA,DF,2026-10-01 02:00:00,200
+          AAA,DF,2026-10-01 03:00:00,200
+          AAA,NG,2026-10-01 00:00:00,-5
+          AAA,TI,2026-10-01 00:00:00,-500
+          AAA,TI,2026-10-01 01:00:00,400
+          AAA,TI,2026-10-01 02:00:00,-500
+          BBB,D,2026-10-01 00:00:00,100
+          BBB,D,2026-10-01 02:00:00,300
+          BBB,D,2026-10-01 03:00:00,100
+    expect:
+      format: csv
+      rows: |
+        ba_code,series_code,period_utc,is_missing,is_zero,is_negative,is_spike,quality_status
+        AAA,D,2026-10-01 00:00:00,false,false,false,false,ok
+        AAA,D,2026-10-01 01:00:00,false,false,false,false,ok
+        AAA,D,2026-10-01 02:00:00,false,false,false,true,suspect
+        AAA,D,2026-10-01 03:00:00,false,false,false,false,ok
+        AAA,D,2026-10-01 04:00:00,false,true,false,true,invalid
+        AAA,D,2026-10-01 05:00:00,false,false,false,false,ok
+        AAA,D,2026-10-01 06:00:00,true,false,false,false,missing
+        AAA,DF,2026-10-01 00:00:00,false,false,false,false,ok
+        AAA,DF,2026-10-01 01:00:00,false,false,false,false,ok
+        AAA,DF,2026-10-01 02:00:00,false,false,false,false,ok
+        AAA,DF,2026-10-01 03:00:00,false,false,false,false,ok
+        AAA,NG,2026-10-01 00:00:00,false,false,true,false,suspect
+        AAA,TI,2026-10-01 00:00:00,false,false,true,false,ok
+        AAA,TI,2026-10-01 01:00:00,false,false,false,false,ok
+        AAA,TI,2026-10-01 02:00:00,false,false,true,false,ok
+        BBB,D,2026-10-01 00:00:00,false,false,false,false,ok
+        BBB,D,2026-10-01 02:00:00,false,false,false,false,ok
+        BBB,D,2026-10-01 03:00:00,false,false,false,false,ok
