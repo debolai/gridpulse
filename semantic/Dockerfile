@@ -1,7 +1,9 @@
 # Semantic API image: FastAPI + MetricFlow + the dbt project (models, metrics, semantic manifest).
 # Build from the repo root: docker build -f semantic/Dockerfile .
-# The semantic manifest is parsed at build time, so the image pins exactly which metric
-# definitions it serves. DBT_TARGET picks the engine at runtime (local Trino or aws Athena).
+# The dbt project is baked in, so the image pins exactly which metric definitions it serves.
+# DBT_TARGET picks the engine at runtime (local Trino or aws Athena). Relation names in the
+# manifest depend on the target (catalog `lake` vs `awsdatacatalog`), so the entrypoint re-parses
+# for the runtime target; the build-time parse only validates the project.
 
 FROM ghcr.io/astral-sh/uv:0.12.19@sha256:04d046b13e60d6bcec73cbc5e1cad25d680dea90c8573340950a0ac2d1aef424 AS uv
 
@@ -30,4 +32,4 @@ USER gridpulse
 WORKDIR /app/transform
 RUN dbt deps --quiet && dbt parse --no-partial-parse --quiet
 EXPOSE 8090
-ENTRYPOINT ["gridpulse-semantic"]
+ENTRYPOINT ["sh", "-c", "dbt parse --no-partial-parse --quiet && exec gridpulse-semantic"]
