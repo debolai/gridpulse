@@ -24,7 +24,11 @@ with observations as (
 {% if is_incremental() %}
 touched as (
 
-    select distinct route, ba_code, item_code, period_utc
+    select distinct
+        route,
+        ba_code,
+        item_code,
+        period_utc
     from observations
     where ingested_at_utc > {{ incremental_watermark('revised_at_utc') }}
 
@@ -76,7 +80,8 @@ select
     cast(previous_ingested_at_utc as {{ timestamp_type() }}) as previous_ingested_at_utc,
     cast(ingested_at_utc as {{ timestamp_type() }}) as revised_at_utc
 from sequenced
-where previous_hash is not null
+where
+    previous_hash is not null
     and record_hash <> previous_hash
     {% if is_incremental() %}
     and ingested_at_utc > {{ incremental_watermark('revised_at_utc') }}

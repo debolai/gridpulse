@@ -28,13 +28,22 @@ with ba_hours as (
 
 scoped as (
 
-    select 'interconnection' as scope_type, interconnection as scope_code, ba_hours.*
+    select
+        'interconnection' as scope_type,
+        interconnection as scope_code,
+        ba_hours.*
     from ba_hours
     union all
-    select 'region' as scope_type, region_code as scope_code, ba_hours.*
+    select
+        'region' as scope_type,
+        region_code as scope_code,
+        ba_hours.*
     from ba_hours
     union all
-    select 'lower_48' as scope_type, 'US48' as scope_code, ba_hours.*
+    select
+        'lower_48' as scope_type,
+        'US48' as scope_code,
+        ba_hours.*
     from ba_hours
 
 )

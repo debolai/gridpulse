@@ -2,6 +2,7 @@
 
 gridpulse-extract eia --route region-data --start ... --end ...
 gridpulse-extract noaa --stations USW00094846,USW00013739 --start ... --end ...
+gridpulse-extract sample export|load --dir local/ci-sample   (a committed raw slice for CI)
 """
 
 import argparse
@@ -9,7 +10,9 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+from gridpulse_ingestion import sample
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import ROUTES
@@ -60,7 +63,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="append every run manifest in the raw bucket to raw.ingestion_runs "
         "(staging keeps one row per attempt, so rerunning is safe)",
     )
-    return parser.parse_args(argv)
+    samples = sub.add_parser("sample", help="copy a raw slice to Parquet files, or load one")
+    samples.add_argument("action", choices=["export", "load"])
+    samples.add_argument("--dir", type=Path, required=True)
+    samples.add_argument("--start", type=_utc_hour, help="export: inclusive, UTC")
+    samples.add_argument("--end", type=_utc_hour, help="export: exclusive, UTC")
+    args = parser.parse_args(argv)
+    if args.source == "sample" and args.action == "export" and not (args.start and args.end):
+        parser.error("sample export needs --start and --end")
+    return args
 
 
 def run_noaa(args: argparse.Namespace, settings: Settings) -> dict:
@@ -106,10 +117,20 @@ def main(argv: list[str] | None = None) -> int:
         appended = IcebergSink.from_settings(settings).append_runs(records)
         print(json.dumps({"manifests_appended": appended}))
         return 0
+    if args.source == "sample":
+        sink = IcebergSink.from_settings(settings)
+        if args.action == "export":
+            counts = sample.export(sink, args.dir, args.start, args.end)
+        else:
+            counts = sample.load(sink, args.dir)
+        print(json.dumps({"action": args.action, "rows": counts}))
+        return 0
     if args.source == "noaa":
         json.dump(run_noaa(args, settings), sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")
         return 0
+    if settings.eia_api_key is None:
+        raise SystemExit("EIA_API_KEY is not set (put it in .env); the eia command needs it")
     route = ROUTES[args.route]
     facets = [r.strip().upper() for r in args.respondents.split(",") if r.strip()]
     client = EIAClient(

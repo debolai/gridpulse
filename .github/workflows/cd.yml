@@ -1,0 +1,111 @@
+name: cd
+
+# Every merge to main (ADR-0009):
+# 1. publish (no approval): images tagged with the commit SHA to ECR, built natively on arm64
+#    (the demo nodes are Graviton), and the dbt manifest that slim CI compares with.
+# 2. deploy (`production` environment: waits for the owner's approval): terraform apply of the
+#    foundation stack; then, only if the demo cluster is up, helm upgrade + smoke test, rolling
+#    back on failure. With the demo down it says so; the next `make aws-up` deploys this SHA.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push images (skips a tag already in ECR)
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for component in ingestion transform semantic agent; do
+            repo="gridpulse/$component"
+            if aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "$repo:$TAG already in ECR"
+              continue
+            fi
+            docker buildx build --push -f "$component/Dockerfile" -t "$REGISTRY/$repo:$TAG" \
+              --cache-from "type=gha,scope=arm64-$component" \
+              --cache-to "type=gha,mode=max,scope=arm64-$component" .
+            echo "- pushed \`$repo:$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Refresh the manifest slim CI compares with
+        env:
+          DBT_TARGET: aws
+          DBT_PROJECT_DIR: transform
+          DBT_PROFILES_DIR: transform
+        run: |
+          make dbt-deps
+          uv run --quiet dbt parse --no-partial-parse
+          aws s3 cp --only-show-errors transform/target/manifest.json \
+            s3://gridpulse-dev-lake/ci/dbt-state/manifest.json
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+      - name: Terraform apply (foundation)
+        run: infra/scripts/cd-apply.sh
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Deploy to the demo cluster if it is up
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          if ! aws eks describe-cluster --name gridpulse-dev >/dev/null 2>&1; then
+            msg="Demo cluster is down: nothing deployed (ADR-0009). The next make aws-up deploys $TAG."
+            echo "::notice::$msg"
+            echo "### Deploy: skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          infra/scripts/deploy.sh "$TAG"
+          echo "### Deploy: \`$TAG\` is live and passed the smoke test" >> "$GITHUB_STEP_SUMMARY"

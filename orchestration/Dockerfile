@@ -5,6 +5,8 @@
 # Build from the repo root after the transform image (its dbt manifest is copied in):
 #   docker build -f orchestration/Dockerfile --build-arg TRANSFORM_IMAGE=gridpulse/transform:<tag> .
 ARG TRANSFORM_IMAGE=gridpulse/transform:local
+# The base is our own transform image (for the dbt manifest), tagged by the build.
+# hadolint ignore=DL3006
 FROM ${TRANSFORM_IMAGE} AS dbt
 
 FROM apache/airflow:slim-3.3.2-python3.12@sha256:a54e7bd6c4d7a17e55cd14b0ead257877b8f8111680d2692cbdba2ff32bd3ff3

@@ -17,3 +17,18 @@ output "ecr_repositories" {
   description = "ECR repository URL per component."
   value       = module.ecr.repository_urls
 }
+
+output "github_ci_role_arn" {
+  description = "Role GitHub Actions assumes on pull requests (repository variable AWS_CI_ROLE_ARN)."
+  value       = module.github_oidc.ci_role_arn
+}
+
+output "github_publish_role_arn" {
+  description = "Role for pushes to main (repository variable AWS_PUBLISH_ROLE_ARN)."
+  value       = module.github_oidc.publish_role_arn
+}
+
+output "github_deploy_role_arn" {
+  description = "Role for the production environment (repository variable AWS_DEPLOY_ROLE_ARN)."
+  value       = module.github_oidc.deploy_role_arn
+}

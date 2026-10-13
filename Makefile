@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws backfill-aws dag-check images \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
@@ -17,10 +17,15 @@ setup: ## Install pinned dev tools and git hooks
 	uv sync --locked
 	uv run pre-commit install
 
-lint: ## Run all linters (no changes made)
+HADOLINT := docker run --rm -i \
+	hadolint/hadolint:v2.12.0@sha256:30a8fd2e785ab6176eed53f74769e04f125afb2f74a6c52aef7d463583b6d45e
+
+lint: ## Run all linters (no changes made): Python, YAML, dbt SQL, Dockerfiles
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run yamllint --strict .
+	cd transform && uv run sqlfluff lint models snapshots
+	@for f in */Dockerfile; do $(HADOLINT) < $$f || { echo "hadolint: $$f"; exit 1; }; done
 
 # gitleaks reads text on stdin, so it never runs git inside the container (where git can fail
 # and gitleaks would then report "no leaks" instead of an error).
@@ -73,12 +78,13 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 
 up: up-orch ## Start everything built so far
 
-images: ## Build the local images: the tasks Airflow launches (extractor, dbt, agent) and Airflow
+images: ## Build the local images: extractor, dbt, semantic API, agent and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
 	docker build -q -f transform/Dockerfile -t gridpulse/transform:local . >/dev/null
+	docker build -q -f semantic/Dockerfile -t gridpulse/semantic:local . >/dev/null
 	docker build -q -f agent/Dockerfile -t gridpulse/agent:local . >/dev/null
 	docker build -q -f orchestration/Dockerfile -t gridpulse/orchestration:local . >/dev/null
-	@echo "built gridpulse/{ingestion,transform,agent,orchestration}:local"
+	@echo "built gridpulse/{ingestion,transform,semantic,agent,orchestration}:local"
 
 dag-check: ## DAG integrity on both runtimes: imports, no catchup, retries, timeouts, EIA pool
 	@for rt in docker kubernetes; do \
@@ -174,6 +180,19 @@ ROUTE ?= region-data
 extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data --start 2026-10-01 --end 2026-10-08"
 	$(COMPOSE) run --rm --build extractor $(ARGS)
 
+# The raw slice CI builds and tests on: 28 Sep - 13 Oct 2026 for the sample BAs (a month
+# boundary for month-to-date, and re-pulled days with real revisions). The semantic ground-truth
+# tests use this window.
+CI_SAMPLE := local/ci-sample
+CI_SAMPLE_WINDOW := --start 2026-09-28 --end 2026-10-13
+
+ci-sample-export: ## Re-export the committed CI sample from the running local lake
+	$(COMPOSE) run --rm --build -v $(CURDIR)/$(CI_SAMPLE):/sample extractor \
+		sample export --dir /sample $(CI_SAMPLE_WINDOW)
+
+ci-sample-load: ## Load the committed CI sample into the running local lake (what CI does)
+	$(COMPOSE) run --rm --build -v $(CURDIR)/$(CI_SAMPLE):/sample:ro extractor sample load --dir /sample
+
 extract-sample: ## Load one route for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08 [ROUTE=fuel-type-data]
 	$(COMPOSE) run --rm --build extractor eia --route $(ROUTE) \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
@@ -213,6 +232,25 @@ dbt-test: ## Run dbt data and unit tests only
 
 dbt-docs: ## Generate and serve dbt docs at http://localhost:8081
 	$(DBT) docs generate && $(DBT) docs serve --port 8081
+
+TFLINT := docker run --rm -v $(CURDIR)/infra/terraform:/data -w /data \
+	ghcr.io/terraform-linters/tflint:v0.55.1@sha256:4136a6ec3d6659551f2b8f63be8bd413c8c1d842506a5597a26bf4e8bc1eac16
+CHECKOV := docker run --rm -v $(CURDIR)/infra/terraform:/tf -w /tf \
+	bridgecrew/checkov:3.2.450@sha256:f14993a3f01ad7f936add90c2169232e47370a881e5a410a0a9d34c4542b459d
+
+HELM := docker run --rm -v $(CURDIR)/infra/helm:/charts \
+	alpine/helm:3.19.0@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9
+KUBECONFORM := docker run --rm -i \
+	ghcr.io/yannh/kubeconform:v0.6.7@sha256:0925177fb05b44ce18574076141b5c3d83235e1904d3f952182ac99ddc45762c
+
+helm-lint: ## Lint the gridpulse chart and validate its rendered manifests against Kubernetes schemas
+	$(HELM) lint /charts/gridpulse --set image.registry=example
+	$(HELM) template gridpulse /charts/gridpulse --set image.registry=example --set image.tag=ci \
+		| $(KUBECONFORM) -strict -summary -kubernetes-version 1.33.0 -
+
+tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reasons: infra/terraform/.checkov.yaml)
+	$(TFLINT) --recursive
+	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet
 
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'

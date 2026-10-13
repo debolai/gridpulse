@@ -36,7 +36,7 @@ latest as (
         *,
         row_number() over (
             partition by station_id, observed_at_utc, report_type
-            order by ingested_at_utc desc, record_hash
+            order by ingested_at_utc desc, record_hash asc
         ) as recency_rank
     from typed
 

@@ -29,15 +29,7 @@ for component in semantic agent; do
   fi
 done
 
-step "Helm: gridpulse release (tag $TAG)"
-helm upgrade --install gridpulse "$ROOT/infra/helm/gridpulse" \
-  --kube-context "$KUBE_CONTEXT" --namespace "$NAMESPACE" --create-namespace \
-  --set image.registry="$REGISTRY" --set image.tag="$TAG" --set env="$ENV_NAME" \
-  --wait --timeout 10m
-kubectl --context "$KUBE_CONTEXT" -n "$NAMESPACE" get pods
-
-step "Smoke test"
-"$ROOT/infra/scripts/smoke.sh"
+"$ROOT/infra/scripts/deploy.sh" "$TAG"
 
 step "Up in $(( ($(date +%s) - started) / 60 )) min. Open the demo:"
 echo "  kubectl --context $KUBE_CONTEXT -n $NAMESPACE port-forward svc/agent-ui 8501:8501   # http://localhost:8501"

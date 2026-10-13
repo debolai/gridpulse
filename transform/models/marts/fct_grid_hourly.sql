@@ -21,7 +21,9 @@ with
 {% if is_incremental() %}
 changed as (
 
-    select distinct ba_code, period_utc
+    select distinct
+        ba_code,
+        period_utc
     from {{ ref('int_grid__latest_values') }}
     where ingested_at_utc > {{ incremental_watermark('last_ingested_at_utc') }}
 
@@ -29,13 +31,24 @@ changed as (
 
 changed_hours as (
 
-    select ba_code, period_utc from changed
+    select
+        ba_code,
+        period_utc
+    from changed
     union
-    select ba_code, period_utc - interval '1' hour from changed
+    select
+        ba_code,
+        period_utc - interval '1' hour as period_utc
+    from changed
     union
-    select ba_code, period_utc + interval '1' hour from changed
+    select
+        ba_code,
+        period_utc + interval '1' hour as period_utc
+    from changed
     union
-    select ba_code, period_utc
+    select
+        ba_code,
+        period_utc
     from {{ ref('int_weather__ba_hourly') }}
     where last_ingested_at_utc > {{ incremental_watermark('last_ingested_at_utc') }}
 

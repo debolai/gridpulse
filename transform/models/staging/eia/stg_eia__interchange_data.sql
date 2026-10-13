@@ -5,8 +5,13 @@ with source as (
 
     select * from {{ source('eia_raw', 'eia_interchange_data') }}
     -- Region-to-region flows (EIA's regional sums) are not BA flows; they stay in raw only.
-    where fromba not in (select respondent_code from {{ ref('eia_aggregate_respondents') }})
-        and toba not in (select respondent_code from {{ ref('eia_aggregate_respondents') }})
+    where
+        fromba not in (
+            select agg.respondent_code from {{ ref('eia_aggregate_respondents') }} as agg
+        )
+        and toba not in (
+            select agg.respondent_code from {{ ref('eia_aggregate_respondents') }} as agg
+        )
 
 ),
 

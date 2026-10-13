@@ -1,0 +1,83 @@
+{{- if .Values.memory.enabled }}
+# Conversation memory for the assistant (LangGraph checkpoints): a small Postgres inside the
+# demo cluster. It lives and dies with the demo, like everything in the compute stack
+# (ADR-0009); RDS replaces it when Airflow moves to EKS. The password is generated once and
+# kept across upgrades (lookup), and reaches the agent only through this Secret.
+{{- $secret := lookup "v1" "Secret" .Release.Namespace "agent-memory" }}
+{{- $password := "" }}
+{{- if $secret }}
+{{- $password = index $secret.data "password" | b64dec }}
+{{- else }}
+{{- $password = randAlphaNum 32 }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agent-memory
+  labels: {{- include "gridpulse.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  password: {{ $password | quote }}
+  dsn: {{ printf "postgresql://agent:%s@agent-memory:5432/agent" $password | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-memory
+  labels:
+    app.kubernetes.io/name: agent-memory
+    {{- include "gridpulse.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: agent-memory}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agent-memory
+        {{- include "gridpulse.labels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70  # the postgres user in the alpine image
+        fsGroup: 70
+      containers:
+        - name: postgres
+          image: {{ .Values.memory.image | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          env:
+            - {name: POSTGRES_USER, value: agent}
+            - {name: POSTGRES_DB, value: agent}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: agent-memory, key: password}}
+          ports:
+            - {name: postgres, containerPort: 5432}
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "agent", "-d", "agent"]}
+            periodSeconds: 5
+          livenessProbe:
+            exec: {command: ["pg_isready", "-U", "agent", "-d", "agent"]}
+            periodSeconds: 20
+            initialDelaySeconds: 30
+          resources: {{- toYaml .Values.memory.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: run, mountPath: /var/run/postgresql}
+      volumes:
+        - {name: data, emptyDir: {}}
+        - {name: run, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-memory
+  labels: {{- include "gridpulse.labels" . | nindent 4 }}
+spec:
+  selector: {app.kubernetes.io/name: agent-memory}
+  ports:
+    - {name: postgres, port: 5432, targetPort: postgres}
+{{- end }}

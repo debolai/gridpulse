@@ -27,7 +27,7 @@ ranked as (
         *,
         row_number() over (
             partition by ba_code, series_code, period_utc
-            order by ingested_at_utc desc, record_hash
+            order by ingested_at_utc desc, record_hash asc
         ) as recency_rank
     from observations
 

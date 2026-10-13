@@ -267,6 +267,14 @@ class IcebergSink:
     def table(self, route: Route) -> Table:
         return self._table(raw_table_name(route), raw_table_schema(route), "period_utc")
 
+    def existing(self, name: str) -> Table:
+        """A raw table that must already exist (NoSuchTableError otherwise)."""
+        return self._catalog.load_table((self._namespace, name))
+
+    def ensure(self, name: str, schema: Schema, month_of: str) -> Table:
+        """A raw table, created with the extractor's schema and partitioning if missing."""
+        return self._table(name, schema, month_of)
+
     @staticmethod
     def _append(table: Table, records: Sequence[dict]) -> int:
         if not records:
