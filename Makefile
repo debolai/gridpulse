@@ -280,8 +280,12 @@ mf: ## Run MetricFlow directly, e.g. make mf ARGS="query --metrics demand --grou
 openai-check: ## Confirm the OpenAI key in .env can call the agent's two models (one tiny request each)
 	uv run --quiet python -m gridpulse_agent.openai_check
 
-agent-api: ## Serve the assistant at http://localhost:8091/docs
-	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent
+# Conversation memory in the local Postgres (database "agent"; same dummy credentials as compose).
+AGENT_CHECKPOINT_DSN ?= postgresql://gridpulse:gridpulse@localhost:5433/agent
+
+agent-api: ## Serve the assistant at http://localhost:8091/docs (conversations kept in Postgres)
+	AWS_PROFILE=$(AWS_PROFILE) GRIDPULSE_AGENT_CHECKPOINT_DSN=$(AGENT_CHECKPOINT_DSN) \
+		uv run gridpulse-agent
 
 agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 	uv run streamlit run agent/src/gridpulse_agent/ui.py

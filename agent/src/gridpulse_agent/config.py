@@ -39,6 +39,10 @@ class AgentSettings(BaseSettings):
     max_rows: int = 1000
     revision_window_days: int = 30  # eia_daily_sweep re-reads this many days
     api_token: SecretStr | None = None  # demo bearer token for POST /ask; unset = open locally
+    # Postgres for conversation memory, e.g. postgresql://user:pass@host:5432/agent.
+    # Unset = in memory (lost on restart).
+    checkpoint_dsn: SecretStr | None = None
+    history_turns: int = 3  # earlier questions the router and planner see in a conversation
 
     @model_validator(mode="after")
     def _api_keys_stay_local(self) -> "AgentSettings":

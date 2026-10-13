@@ -12,9 +12,11 @@ The model only routes, plans and writes. Validation, execution, inspection and t
 are code, and so are the lines appended to every answer: what the metrics left out (flagged
 values) and the inspection's caveats (completeness, latest hour, revision window).
 A clarifying question pauses the graph (LangGraph interrupt); the conversation's checkpoint
-holds it until the user's reply resumes the same thread (see `ask`).
+holds it until the user's reply resumes the same thread (see `ask`). Answered questions are
+remembered in the thread (`history`), so a follow-up ("and last year?") can build on them.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any, Literal, TypedDict
 from uuid import uuid4
@@ -44,6 +46,7 @@ class State(TypedDict, total=False):
     clarifications: int  # asked this turn (at most one)
     asked: str | None  # the clarifying question asked this turn, and the user's reply
     reply: str | None
+    history: list[dict]  # earlier answered questions in this conversation: {question, request}
     errors: list[str]
     attempts: int
     result: dict | None
@@ -93,7 +96,7 @@ def _table(result: dict, limit: int = 20) -> str:
 
 def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings, checkpointer=None):
     def route(state: State) -> State:
-        decision = brain.route(state["question"])
+        decision = brain.route(state["question"], state.get("history", []))
         return {"route": decision.route}
 
     def define(state: State) -> State:
@@ -114,6 +117,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
             state.get("errors", []),
             state.get("request"),
             semantic.saved_queries(),
+            state.get("history", []),
         )
         clarify_q = getattr(planned, "clarify", None)
         request = planned.request() if hasattr(planned, "request") else planned
@@ -215,6 +219,11 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
             "the result as returned by the semantic layer:\n\n" + _table(state["result"]),
         }
 
+    def remember(state: State) -> State:
+        """Keep this question and its request for follow-ups (the last few only)."""
+        entry = {"question": _user_text(state), "request": state["request"].model_dump(mode="json")}
+        return {"history": [*state.get("history", []), entry][-settings.history_turns :]}
+
     def after_route(state: State) -> str:
         return {"metric": "plan", "definition": "define"}.get(state["route"], "out_of_scope")
 
@@ -232,10 +241,10 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         return "clarify" if state.get("clarify_question") else "execute"
 
     def after_inspect(state: State) -> str:
-        return END if state.get("status") == "no_data" else "answer"
+        return "remember" if state.get("status") == "no_data" else "answer"
 
     def after_ground_check(state: State) -> str:
-        return "answer" if state.get("status") is None and state.get("unsupported") else END
+        return "answer" if state.get("status") is None and state.get("unsupported") else "remember"
 
     g = StateGraph(State)
     for name, fn in [
@@ -251,6 +260,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         ("give_up", give_up),
         ("answer", answer),
         ("ground_check", ground_check),
+        ("remember", remember),
     ]:
         g.add_node(name, fn)
     g.add_edge(START, "route")
@@ -260,10 +270,10 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
     g.add_conditional_edges("ambiguity", after_ambiguity, ["clarify", "execute"])
     g.add_edge("clarify", "plan")
     g.add_conditional_edges("execute", after_execute, ["inspect", "plan", "give_up"])
-    g.add_conditional_edges("inspect", after_inspect, ["answer", END])
+    g.add_conditional_edges("inspect", after_inspect, ["answer", "remember"])
     g.add_edge("answer", "ground_check")
-    g.add_conditional_edges("ground_check", after_ground_check, ["answer", END])
-    for terminal in ("define", "out_of_scope", "give_up"):
+    g.add_conditional_edges("ground_check", after_ground_check, ["answer", "remember"])
+    for terminal in ("define", "out_of_scope", "give_up", "remember"):
         g.add_edge(terminal, END)
     # A checkpointer is required: a clarifying question pauses the run until the reply arrives.
     return g.compile(checkpointer=checkpointer or InMemorySaver(serde=checkpoint_serializer()))
@@ -289,22 +299,39 @@ _FRESH_TURN = {
 }
 
 
-def ask(
+def ask_stream(
     graph, question: str, today: date | None = None, thread_id: str | None = None
-) -> dict[str, Any]:
-    """One message in a conversation. If the conversation is waiting for the answer to a
-    clarifying question, the message is that answer and the paused run resumes."""
+) -> Iterator[dict[str, Any]]:
+    """One message in a conversation, as events: {"type": "step", "node": ...} as each graph
+    step finishes, then {"type": "result", ...}. If the conversation is waiting for the answer
+    to a clarifying question, the message is that answer and the paused run resumes."""
     thread_id = thread_id or uuid4().hex
     config = {"configurable": {"thread_id": thread_id}}
     if graph.get_state(config).interrupts:
-        state = graph.invoke(Command(resume=question), config)
+        payload = Command(resume=question)
     else:
-        today = today or datetime.now(UTC).date()
-        state = graph.invoke({**_FRESH_TURN, "question": question, "today": today}, config)
+        payload = {**_FRESH_TURN, "question": question, "today": today or datetime.now(UTC).date()}
+    for update in graph.stream(payload, config, stream_mode="updates"):
+        for node in update:
+            if node != "__interrupt__":
+                yield {"type": "step", "node": node}
+    snapshot = graph.get_state(config)
+    yield {"type": "result", **_result(snapshot.values, snapshot.interrupts, thread_id)}
+
+
+def ask(
+    graph, question: str, today: date | None = None, thread_id: str | None = None
+) -> dict[str, Any]:
+    """ask_stream without the progress events: the final result."""
+    *_, last = ask_stream(graph, question, today, thread_id)
+    return {k: v for k, v in last.items() if k != "type"}
+
+
+def _result(state: dict, interrupts, thread_id: str) -> dict[str, Any]:
     request = state.get("request")
-    if state.get("__interrupt__"):
+    if interrupts:
         return {
-            "answer": state["__interrupt__"][0].value["question"],
+            "answer": interrupts[0].value["question"],
             "status": "needs_clarification",
             "thread_id": thread_id,
             "route": state.get("route"),

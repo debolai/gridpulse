@@ -39,13 +39,14 @@ class ScriptedBrain:
         self.plan_calls: list[dict] = []
         self.answer_calls: list[list[str]] = []
 
-    def route(self, question):
+    def route(self, question, history=()):
         return RouteDecision(route=self._route, reason="scripted")
 
-    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
+    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=(), history=()):
         self.plan_calls.append(
             {
                 "question": question,
+                "history": list(history),
                 "errors": list(errors),
                 "previous": previous,
                 "saved_queries": list(saved_queries),

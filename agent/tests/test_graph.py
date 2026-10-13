@@ -178,3 +178,55 @@ def test_a_new_question_in_the_same_conversation_starts_fresh(catalog, settings)
     second = ask(graph, "And again?", today=TODAY, thread_id=first["thread_id"])
     assert second["status"] == "answered" and second["attempts"] == 1
     assert brain.plan_calls[1]["question"] == "And again?" and brain.plan_calls[1]["errors"] == []
+
+
+def test_follow_ups_see_the_earlier_question_and_request(catalog, settings):
+    july = req(start="2025-07-01T00:00:00Z", end="2025-08-01T00:00:00Z")
+    brain = ScriptedBrain(plans=[req(), july], answers=["PJM: 70,276,500 MWh."] * 2)
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT, RESULT]), settings)
+    first = ask(graph, "What was PJM's demand in September 2026?", today=TODAY)
+    ask(graph, "And the same month last year?", today=TODAY, thread_id=first["thread_id"])
+    assert brain.plan_calls[0]["history"] == []
+    (earlier,) = brain.plan_calls[1]["history"]
+    assert earlier["question"] == "What was PJM's demand in September 2026?"
+    assert earlier["request"]["metrics"] == ["demand"]
+
+
+def test_history_keeps_only_the_last_few_turns(catalog, settings):
+    settings.history_turns = 2
+    n = 4
+    brain = ScriptedBrain(plans=[req()] * n, answers=["PJM: 70,276,500 MWh."] * n)
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT] * n), settings)
+    thread = None
+    for i in range(n):
+        thread = ask(graph, f"question {i}", today=TODAY, thread_id=thread)["thread_id"]
+    assert [t["question"] for t in brain.plan_calls[-1]["history"]] == ["question 1", "question 2"]
+
+
+def test_other_conversations_dont_share_history(catalog, settings):
+    brain = ScriptedBrain(plans=[req(), req()], answers=["PJM: 70,276,500 MWh."] * 2)
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT, RESULT]), settings)
+    ask(graph, "What was PJM's demand in September 2026?", today=TODAY)
+    ask(graph, "What was PJM's demand in September 2026?", today=TODAY)  # new thread
+    assert brain.plan_calls[1]["history"] == []
+
+
+def test_stream_reports_each_step_then_the_result(catalog, settings):
+    from gridpulse_agent.graph import ask_stream
+
+    brain = ScriptedBrain(plans=[req()], answers=["PJM: 70,276,500 MWh."])
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT]), settings)
+    events = list(ask_stream(graph, "What was PJM's demand in September 2026?", today=TODAY))
+    steps = [e["node"] for e in events if e["type"] == "step"]
+    assert steps == [
+        "route",
+        "plan",
+        "validate",
+        "ambiguity",
+        "execute",
+        "inspect",
+        "answer",
+        "ground_check",
+        "remember",
+    ]
+    assert events[-1]["type"] == "result" and events[-1]["status"] == "answered"

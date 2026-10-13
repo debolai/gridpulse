@@ -13,6 +13,11 @@ with governed metrics.
 - out_of_scope: anything else, e.g. electricity prices, trading, weather forecasts, non-U.S.
   grids, or general chat.
 
+A follow-up ("and last year?", "now by month", "compare that with MISO") continues the earlier
+questions below and has the same route as the question it continues.
+Earlier in this conversation:
+{history}
+
 Question: {question}"""
 
 PLANNER = """You turn a question into ONE metric request for the GridPulse semantic API.
@@ -50,6 +55,11 @@ Rules:
   fill in your best request. Don't ask about things the rules above settle (time zone is UTC).
 - For "which/highest/worst" questions, add order_by (e.g. "-forecast_error_mape") and keep the
   limit small.
+
+Earlier in this conversation (oldest first). If the question refers back ("that", "same",
+"and last year?", "now by month"), start from the earlier request it refers to and change only
+what the question changes:
+{history}
 {feedback}
 Question: {question}"""
 
@@ -99,6 +109,18 @@ OUT_OF_SCOPE = (
     "balancing authority and hour. "
     "Prices, trading, and other topics aren't covered."
 )
+
+
+def history_text(history: list[dict], with_requests: bool = False) -> str:
+    if not history:
+        return "(nothing yet)"
+    lines = []
+    for turn in history:
+        line = f"- {turn['question']}"
+        if with_requests:
+            line += f"\n  request: {json.dumps(turn['request'])}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def saved_queries_text(saved: list[dict]) -> str:
