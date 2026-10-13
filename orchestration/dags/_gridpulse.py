@@ -10,7 +10,10 @@ GRIDPULSE_TASK_RUNTIME picks the operator:
 """
 
 import csv
+import json
+import logging
 import os
+import urllib.request
 from datetime import timedelta
 from pathlib import Path
 
@@ -73,8 +76,43 @@ DOCKER_ENV = {
     },
 }
 
+log = logging.getLogger(__name__)
+
+
+def alert_on_failure(context) -> None:
+    """Post a task's final failure (after its retries) to SLACK_WEBHOOK_URL, a Slack
+    incoming webhook (any endpoint accepting {"text": ...} works). Without a URL the alert is
+    only logged. Never raises: a broken webhook must not mask the task's own error."""
+    ti = context["ti"]
+    # First line only: pod failures append the whole pod spec.
+    reason = (str(context.get("exception") or "").strip().splitlines() or [""])[0][:300]
+    text = (
+        f"GridPulse: {ti.dag_id}.{ti.task_id} failed (run {context.get('run_id')}, "
+        f"try {ti.try_number}): {reason}"
+    )
+    log_url = getattr(ti, "log_url", None)
+    if log_url:
+        text += f"\nLogs: {log_url}"
+    url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if not url:
+        log.warning("ALERT (no SLACK_WEBHOOK_URL set): %s", text)
+        return
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"text": text}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            log.info("alert sent (HTTP %s)", resp.status)
+    except OSError as exc:
+        log.error("alert webhook failed (%s); alert was: %s", exc, text)
+
+
 EXTRACT_DEFAULTS = {
     "owner": "gridpulse",
+    "on_failure_callback": alert_on_failure,
     "retries": 3,
     "retry_delay": timedelta(minutes=2),
     "retry_exponential_backoff": True,

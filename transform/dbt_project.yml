@@ -26,6 +26,9 @@ vars:
   spike_threshold: 0.5
   # Weather: a station's missing hours are interpolated when the gap is at most this long.
   weather_max_gap_hours: 2
+  # Freshness: the latest demand hour may be at most this old (EIA posts region-data with a
+  # ~1-2 h lag; matches the source freshness error_after of 6 h).
+  grid_max_lag_hours: 6
 
 seeds:
   gridpulse:

@@ -7,7 +7,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
-	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down \
+	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
 	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
 
 help: ## List available commands
@@ -115,11 +115,23 @@ k3d-up: up-lake images ## Start the lake plus Airflow on k3d (Helm, KubernetesEx
 	  airflow dags pause agent_eval_nightly >/dev/null 2>&1 || true
 	@echo "Airflow on k3d is up. UI: make k3d-ui (http://localhost:8089)"
 
-k3d-secrets: ## Copy the EIA key from .env into the task pods' Secret (never printed)
+k3d-secrets: ## Copy the EIA key and the alert webhook from .env into Secrets (never printed)
 	@set -a; . ./.env; set +a; \
 	  $(KUBECTL) -n airflow create secret generic gridpulse-extractor \
 	    --from-literal=EIA_API_KEY="$$EIA_API_KEY" --dry-run=client -o yaml \
-	  | $(KUBECTL) apply -f - >/dev/null && echo "secret gridpulse-extractor updated"
+	  | $(KUBECTL) apply -f - >/dev/null && echo "secret gridpulse-extractor updated"; \
+	  if [ -n "$${SLACK_WEBHOOK_URL:-}" ]; then \
+	    $(KUBECTL) -n airflow create secret generic gridpulse-alerts \
+	      --from-literal=SLACK_WEBHOOK_URL="$$SLACK_WEBHOOK_URL" \
+	      --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null \
+	    && echo "secret gridpulse-alerts updated"; \
+	  else echo "no SLACK_WEBHOOK_URL in .env: failures are only logged"; fi
+
+alert-test: ## Send a test alert to SLACK_WEBHOOK_URL from .env (TODO #8)
+	@set -a; . ./.env; set +a; [ -n "$${SLACK_WEBHOOK_URL:-}" ] || { echo "SLACK_WEBHOOK_URL is not set in .env"; exit 1; }; \
+	  curl -sf -X POST -H 'Content-Type: application/json' \
+	    -d '{"text": "GridPulse: test alert from make alert-test"}' "$$SLACK_WEBHOOK_URL" >/dev/null \
+	  && echo "test alert sent: check the channel" || { echo "webhook rejected the message"; exit 1; }
 
 k3d-ui: ## Open the k3d Airflow UI through a port-forward: http://localhost:8089
 	$(KUBECTL) -n airflow port-forward svc/airflow-api-server 8089:8080

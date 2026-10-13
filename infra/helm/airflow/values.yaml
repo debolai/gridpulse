@@ -32,6 +32,12 @@ migrateDatabaseJob:
 env:
   - name: GRIDPULSE_TASK_RUNTIME
     value: kubernetes
+# Failure alerts: SLACK_WEBHOOK_URL from this Secret, in every Airflow pod (the
+# callback runs in the worker pod of the failed task). Optional: without it alerts are logged.
+extraEnvFrom: |
+  - secretRef:
+      name: gridpulse-alerts
+      optional: true
 
 config:
   core:

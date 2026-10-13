@@ -1,5 +1,6 @@
 """DAG integrity checks, run inside the Airflow image (`make dag-check`): every DAG imports,
-has no cycles, and every task sets retries and a timeout; EIA calls go through the pool.
+has no cycles, and every task sets retries, a timeout and a failure alert; EIA calls go
+through the pool.
 Run once per runtime (GRIDPULSE_TASK_RUNTIME=docker|kubernetes): both build different operators.
 """
 
@@ -34,6 +35,8 @@ for dag_id, dag in bag.dags.items():
             problems.append(f"{dag_id}.{t.task_id}: no execution_timeout")
         if t.retries is None or t.retries < 1:
             problems.append(f"{dag_id}.{t.task_id}: no retries")
+        if not t.on_failure_callback:
+            problems.append(f"{dag_id}.{t.task_id}: no failure alert (on_failure_callback)")
         if t.task_id.startswith("extract_") and t.pool != "eia_api":
             problems.append(f"{dag_id}.{t.task_id}: EIA tasks must use the eia_api pool")
 if "dbt_build" in bag.dags and len(bag.dags["dbt_build"].tasks) < 20:

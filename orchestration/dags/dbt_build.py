@@ -49,8 +49,13 @@ with DAG(
             test_behavior=TestBehavior.BUILD,
             source_rendering_behavior=SourceRenderingBehavior.WITH_TESTS_OR_FRESHNESS,
         ),
-        # Passed to dbt itself (Cosmos's own selector doesn't know test_type).
-        operator_args={**operator_args, "exclude": "test_type:unit"},
+        operator_args={
+            **operator_args,
+            # Passed to dbt itself (Cosmos's own selector doesn't know test_type).
+            "exclude": "test_type:unit",
+            # A stale fct_grid_hourly fails the run (and alerts) here; dev builds only warn.
+            "vars": {"freshness_severity": "error"},
+        },
     )
 
     @task(retries=1)
