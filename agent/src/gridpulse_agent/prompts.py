@@ -32,7 +32,8 @@ Rules:
 - Pick the metric whose description fits; synonyms are listed (e.g. "load" = demand).
 - One total = empty group_by. "By BA" / "which BA" = group_by balancing_authority.
   Over time = metric_time__day / __week / __month. Local hour of day = grid_hour__hour_local.
-  By grid = balancing_authority__interconnection.
+  By grid = balancing_authority__interconnection. By fuel = fuel_type__fuel_name
+  (or fuel_type__fuel_category / fuel_type__is_renewable).
 - peak_demand is per BA: always group by balancing_authority or filter to one BA.
 - For "which/highest/worst" questions, add order_by (e.g. "-forecast_error_mape") and keep the
   limit small.
@@ -53,8 +54,8 @@ Rules:
   (e.g. 70,276,500 -> "about 70.3 million MWh"). Do not compute new numbers (no sums, averages,
   differences or percentages that aren't in the result).
 - Name the metric(s) you used and the time window (UTC).
-- Units: MWh for energy; peak_demand in MW; forecast_error_mape in %; data_completeness is a
-  fraction (0.98 = 98%). total_interchange: positive = exports.
+- Units: MWh for energy; peak_demand in MW; forecast_error_mape in %; data_completeness and
+  renewable_share are fractions (0.98 = 98%). total_interchange: positive = exports.
 - If the result is empty, say no data matched.
 
 Question: {question}

@@ -122,6 +122,17 @@ models:
           then demand_forecast_mwh - demand_mwh end
         config:
           meta: {agent: true, unit: MWh, additive: false, synonyms: [over-forecast, under-forecast]}
+      - name: net_generation
+        label: Net generation (MWh)
+        description: >
+          Total net generation in MWh (EIA series NG): electricity the BA's plants produced
+          minus their own use, summed over the selected hours and balancing authorities. For
+          the split by fuel use generation_by_fuel. Synonyms: generation, output, production.
+        type: simple
+        agg: sum
+        expr: net_generation_mwh
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [generation, output, production]}
       - name: demand_month_to_date
         label: Demand, month to date (MWh)
         description: Cumulative demand from the start of each month.
@@ -308,6 +319,9 @@ models:
     description: >
       One row per EIA fuel code, from seed `fuel_type_map` (EIA's own labels for a code vary,
       so the seed is the single source of names and categories).
+    semantic_model:
+      enabled: true
+      name: fuel_types
     columns:
       - name: fuel_code
         data_type: varchar
@@ -315,12 +329,23 @@ models:
         constraints:
           - type: not_null
         data_tests: [unique]
+        entity:
+          type: primary
+          name: fuel_type
       - name: fuel_name
         data_type: varchar
         data_tests: [not_null]
+        dimension:
+          type: categorical
+          name: fuel_name
+          description: Fuel name, e.g. Coal, Natural gas, Wind, Solar, Battery storage.
       - name: fuel_category
         data_type: varchar
         description: fossil, nuclear, renewable, storage or other.
+        dimension:
+          type: categorical
+          name: fuel_category
+          description: Broad fuel group - fossil, nuclear, renewable, storage or other.
         data_tests:
           - accepted_values:
               arguments:
@@ -328,6 +353,10 @@ models:
       - name: is_renewable
         data_type: boolean
         description: Wind, solar, hydro, geothermal, including hybrids with integrated storage.
+        dimension:
+          type: categorical
+          name: is_renewable
+          description: True for wind, solar, hydro and geothermal (including hybrids with storage).
       - name: is_storage
         data_type: boolean
         description: Storage or hybrid with storage; these can report negative (charging) hours.
@@ -337,6 +366,53 @@ models:
       Hourly net generation by fuel per balancing authority. Grain: BA × fuel × UTC hour.
       Storage fuels are negative while charging. For a BA-hour, the fuels should add up to
       net generation in fct_grid_hourly (see the reconciliation test).
+    semantic_model:
+      enabled: true
+      name: generation_by_fuel_hourly
+    primary_entity: fuel_hour
+    agg_time_dimension: period_utc
+    metrics:
+      - name: generation_by_fuel
+        label: Generation by fuel (MWh)
+        description: >
+          Net generation in MWh from EIA's fuel-type report. Group by fuel_type__fuel_name,
+          fuel_type__fuel_category or fuel_type__is_renewable for the fuel mix; filter on a
+          fuel for one source ("wind generation"). Storage counts negative while charging.
+          Summed over all fuels it is close to net_generation but comes from a separate report.
+          Synonyms: fuel mix, generation mix, output by source.
+        type: simple
+        agg: sum
+        expr: generation_mwh
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [fuel mix, generation mix, output by source]}
+      - name: renewable_generation
+        label: Renewable generation (MWh)
+        description: >
+          Net generation from wind, solar, hydro and geothermal (including hybrids with
+          storage), MWh. Synonyms: clean generation, green generation.
+        type: simple
+        agg: sum
+        expr: generation_mwh
+        filter: "{{ Dimension('fuel_type__is_renewable') }} = true"
+        config:
+          meta: {agent: true, unit: MWh, additive: true, synonyms: [green generation, clean generation]}
+      - name: renewable_share
+        label: Renewable share of generation (fraction)
+        description: >
+          Renewable generation divided by generation from all fuels, as a fraction from 0 to 1
+          (0.35 = 35%). A ratio of sums over the selected hours and BAs, never an average of
+          hourly shares. Both parts come from the same fuel-type report, so the share is
+          consistent even where fuels and net generation disagree.
+          Synonyms: renewables percentage, green share.
+        type: ratio
+        numerator: renewable_generation
+        denominator: generation_by_fuel
+        config:
+          meta:
+            agent: true
+            unit: fraction
+            additive: false
+            synonyms: [renewables percentage, green share, clean share]
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -351,6 +427,9 @@ models:
               arguments:
                 to: ref('dim_balancing_authority')
                 field: ba_code
+        entity:
+          type: foreign
+          name: balancing_authority
       - name: fuel_code
         data_type: varchar
         constraints:
@@ -362,20 +441,37 @@ models:
                 field: fuel_code
               config:
                 severity: warn
+        entity:
+          type: foreign
+          name: fuel_type
       - name: period_utc
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour, UTC.
         constraints:
           - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: Start of the hour in UTC.
       - name: period_local
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: Start of the hour in the BA's local time zone.
         data_tests: [not_null]
       - name: date_local
         data_type: date
+        granularity: day
+        dimension:
+          type: time
+          name: date_local
+          description: Calendar date in the BA's own time zone (DST-aware).
       - name: hour_local
         data_type: integer
         description: Local hour of day, 0-23.
+        dimension:
+          type: categorical
+          name: hour_local
+          description: Hour of day (0-23) in the BA's own time zone, e.g. for solar's daily shape.
       - name: generation_mwh
         data_type: double
         description: Net generation from this fuel, MWh. Null when the BA did not report it.

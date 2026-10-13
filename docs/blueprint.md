@@ -240,7 +240,7 @@ Metrics are defined once in the dbt project as semantic models and MetricFlow me
 | `forecast_bias` | Mean of (forecast − actual) | MWh | Positive means the operator over-forecast |
 | `net_generation` | Sum of net generation | MWh |  |
 | `generation_by_fuel` | Sum of generation, by fuel dimension | MWh |  |
-| `renewable_share` | Sum of renewable generation ÷ sum of all generation | % | Ratio of sums, never an average of ratios |
+| `renewable_share` | Sum of renewable generation ÷ sum of generation from all fuels (both from the fuel-type report) | fraction | Ratio of sums, never an average of ratios |
 | `net_imports` | −1 × sum of total interchange | MWh | EIA reports exports as positive; this flips the sign so imports read positive |
 | `cooling_degree_hours` | Sum of max(temperature − 18.3, 0) | °C·h | Base 18.3 °C (65 °F), the U.S. convention |
 | `data_completeness` | Hours with valid values ÷ expected hours | % | Expected hours come from a generated hour spine |
@@ -554,3 +554,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — History window cut to one year (from 2025-10-01), loaded once with `make backfill-aws` from the laptop (ADR-0005); July 2018 becomes an optional extension.
 - 2026-10-13 — One-year backfill done (63 BAs, 2025-10-01..2026-10-12). Staging now drops EIA's regional and US48 aggregate respondents (seed `eia_aggregate_respondents`). Reconciliation tests warn by default at full scale (ADR-0006).
 - 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).
+- 2026-10-13 — B3 slice 1: `dim_fuel_type` is a semantic model (entity `fuel_type`); `generation_by_fuel`, `renewable_generation` and `net_generation` added; `renewable_share` divides by the fuel total from the same fuel-type report (not region-data net generation, which disagrees for some BAs per ADR-0006) and is returned as a fraction like `data_completeness`.

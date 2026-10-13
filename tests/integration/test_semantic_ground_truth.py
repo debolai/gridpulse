@@ -102,6 +102,59 @@ def test_data_completeness_is_a_ratio_of_sums(api, sql):
     assert_same(by_ba(api, "data_completeness"), expected)
 
 
+def test_net_generation(api, sql):
+    expected = sql(
+        f"""SELECT ba_code, sum(net_generation_mwh) FROM marts.fct_grid_hourly
+        WHERE {WINDOW_SQL} GROUP BY 1"""
+    )
+    assert_same(by_ba(api, "net_generation"), expected)
+
+
+def test_generation_by_fuel_category(api, sql):
+    expected = sql(
+        f"""SELECT f.ba_code || '/' || d.fuel_category, sum(f.generation_mwh)
+        FROM marts.fct_generation_by_fuel_hourly f
+        JOIN marts.dim_fuel_type d ON d.fuel_code = f.fuel_code
+        WHERE {WINDOW_SQL} GROUP BY 1"""
+    )
+    resp = api.post(
+        "/query",
+        json={
+            "metrics": ["generation_by_fuel"],
+            "group_by": ["balancing_authority", "fuel_type__fuel_category"],
+            "start": START.isoformat(),
+            "end": END.isoformat(),
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    got = {f"{ba}/{category}": value for ba, category, value in resp.json()["rows"]}
+    assert_same(got, expected)
+
+
+def test_renewable_share_is_a_ratio_of_sums(api, sql):
+    expected = sql(
+        f"""SELECT f.ba_code,
+            sum(CASE WHEN d.is_renewable THEN f.generation_mwh END) / sum(f.generation_mwh)
+        FROM marts.fct_generation_by_fuel_hourly f
+        JOIN marts.dim_fuel_type d ON d.fuel_code = f.fuel_code
+        WHERE {WINDOW_SQL} GROUP BY 1"""
+    )
+    got = by_ba(api, "renewable_share")
+    assert_same(got, expected)
+    # Guard against the classic mistake: the average of hourly shares is a different number.
+    hourly_mean = sql(
+        f"""SELECT ba_code, avg(share) FROM (
+            SELECT f.ba_code, f.period_utc,
+                sum(CASE WHEN d.is_renewable THEN f.generation_mwh END) / sum(f.generation_mwh)
+                    AS share
+            FROM marts.fct_generation_by_fuel_hourly f
+            JOIN marts.dim_fuel_type d ON d.fuel_code = f.fuel_code
+            WHERE {WINDOW_SQL} GROUP BY 1, 2)
+        GROUP BY 1"""
+    )
+    assert any(not math.isclose(got[ba], hourly_mean[ba], rel_tol=1e-3) for ba in got)
+
+
 def test_demand_month_to_date_shows_end_of_day_running_total(api, sql):
     expected = sql(
         """SELECT cast(day_utc AS varchar), mtd FROM (
@@ -145,7 +198,15 @@ def test_second_identical_query_is_served_from_cache(api):
 
 def test_catalog_exposes_agent_allow_list(api):
     agent = {m["name"] for m in api.get("/metrics", params={"agent_only": True}).json()}
-    assert {"demand", "peak_demand", "forecast_error_mape", "data_completeness"} <= agent
+    assert {
+        "demand",
+        "peak_demand",
+        "forecast_error_mape",
+        "data_completeness",
+        "net_generation",
+        "generation_by_fuel",
+        "renewable_share",
+    } <= agent
     assert "expected_hours" not in agent  # building blocks stay hidden from the agent
 
 
