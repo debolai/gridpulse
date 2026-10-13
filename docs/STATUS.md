@@ -75,6 +75,7 @@ Repo: https://github.com/debolai/gridpulse
 - [ ] B7 Optional (hosted dbt Semantic Layer demo, Cube comparison)
 
 ## Deferred / later
+- B5: protect `main` (require the four CI checks; currently unprotected) and add `make dag-check` (both runtimes) plus builds of all images to CI; today DAG integrity and the non-extractor images are checked only locally.
 - B2: weather and quality-flag models are full-rebuild tables (a spike or an interpolated hour depends on neighbours); revisit with partition-scoped rebuilds before extending the history beyond one year (ADR-0005).
 - B2: the weather seed covers only the six sample BAs; extend it before loading all BAs.
 - B3: metrics exclude flagged values by default and say so (blueprint "flag bad values"); needs the semantic ground-truth tests updated alongside.
