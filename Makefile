@@ -3,7 +3,7 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose -f local/compose.yaml
 
-.PHONY: help setup lint format test test-integration status doctor clean \
+.PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
@@ -21,6 +21,18 @@ lint: ## Run all linters (no changes made)
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run yamllint --strict .
+
+# gitleaks reads text on stdin, so it never runs git inside the container (where git can fail
+# and gitleaks would then report "no leaks" instead of an error).
+GITLEAKS := docker run --rm -i -v "$(CURDIR)/.gitleaks.toml:/.gitleaks.toml:ro" \
+	ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+	stdin --config /.gitleaks.toml --redact --no-banner --verbose
+
+secrets-staged: ## Scan staged changes for API keys and other secrets (pre-commit hook)
+	@set -o pipefail; git diff --cached --no-color | $(GITLEAKS)
+
+secrets-history: ## Scan every commit for API keys and other secrets (CI)
+	@set -o pipefail; git log --all -p --no-color | $(GITLEAKS)
 
 format: ## Auto-format Python
 	uv run ruff format .

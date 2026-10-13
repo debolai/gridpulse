@@ -9,6 +9,16 @@ permissions:
   contents: read
 
 jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # scan every commit, not just the tip
+      - name: gitleaks over the full history
+        run: make secrets-history
+
   lint-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
