@@ -24,6 +24,8 @@ vars:
   # fraction in the same direction (the largest real hour-to-hour demand step in the Jul-Oct 2026
   # sample was 22.7%). A level shift moves away from only one neighbour, so it is not flagged.
   spike_threshold: 0.5
+  # Weather: a station's missing hours are interpolated when the gap is at most this long.
+  weather_max_gap_hours: 2
 
 seeds:
   gridpulse:
@@ -34,6 +36,10 @@ seeds:
         is_active: boolean
         activation_date: date
         retirement_date: date
+    ba_weather_stations:
+      +column_types:
+        cbsa_code: varchar
+        metro_population: bigint
     reconciliation_exceptions:
       +column_types:
         observed_on: date

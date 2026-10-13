@@ -230,9 +230,17 @@ models:
           - accepted_values:
               arguments:
                 values: ["ok", "suspect", "invalid", "missing"]
+      - name: temperature_c
+        data_type: double
+        description: >
+          Population-weighted air temperature across the BA's main metro areas, °C (NOAA
+          GHCNh; seed ba_weather_stations). Null until NOAA publishes the hour (about 1.5 days).
+      - name: temperature_weight_coverage
+        data_type: double
+        description: Share of the BA's station population weight that had a temperature (1.0 = all).
       - name: last_ingested_at_utc
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
-        description: Latest load that changed any series for this BA-hour.
+        description: Latest load that changed anything in this BA-hour (grid series or weather).
 
   - name: fct_grid_coverage_hourly
     description: >
@@ -523,6 +531,9 @@ unit_tests:
       - input: ref('int_grid__quality_flags')
         format: dict
         rows: []
+      - input: ref('int_weather__ba_hourly')
+        format: dict
+        rows: []
     expect:
       format: csv
       rows: |
@@ -563,8 +574,51 @@ unit_tests:
           ERCO,D,2026-10-01 00:00:00,ok
           ERCO,NG,2026-10-01 00:00:00,suspect
           ERCO,TI,2026-10-01 00:00:00,ok
+      - input: ref('int_weather__ba_hourly')
+        format: dict
+        rows: []
     expect:
       format: csv
       rows: |
         ba_code,period_utc,demand_mwh,demand_forecast_mwh,net_generation_mwh,total_interchange_mwh,demand_quality_status,demand_forecast_quality_status,net_generation_quality_status,total_interchange_quality_status,last_ingested_at_utc
         ERCO,2026-10-01 00:00:00,75544.0,,76000.0,-456.0,ok,missing,suspect,ok,2026-10-03 00:00:00
+
+  - name: late_weather_fills_an_existing_hour
+    description: >
+      NOAA publishes about 1.5 days after EIA. An hour already built without temperature must
+      be rebuilt when its weather arrives, even though no grid value changed.
+    model: fct_grid_hourly
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: this
+        format: sql
+        rows: |
+          select 'PJM' as ba_code, timestamp '2026-10-01 00:00:00' as period_utc,
+              timestamp '2026-10-05 00:00:00' as last_ingested_at_utc
+      - input: ref('int_grid__latest_values')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,value_mwh,ingested_at_utc
+          PJM,D,2026-10-01 00:00:00,90000.0,2026-10-05 00:00:00
+      - input: ref('int_grid__quality_flags')
+        format: csv
+        rows: |
+          ba_code,series_code,period_utc,quality_status
+          PJM,D,2026-10-01 00:00:00,ok
+      - input: ref('int_weather__ba_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,temperature_c,weight_coverage,last_ingested_at_utc
+          PJM,2026-10-01 00:00:00,18.5,1.0,2026-10-07 00:00:00
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,time_zone
+          PJM,America/New_York
+    expect:
+      format: csv
+      rows: |
+        ba_code,period_utc,demand_mwh,temperature_c,temperature_weight_coverage,last_ingested_at_utc
+        PJM,2026-10-01 00:00:00,90000.0,18.5,1.0,2026-10-07 00:00:00

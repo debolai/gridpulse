@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_noaa__observations
+    description: >
+      Typed GHCNh temperature reports, latest load per report, with a QC verdict. Grain:
+      station × observation time × report type.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, observed_at_utc, report_type]
+    columns:
+      - name: station_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('ba_weather_stations')
+                field: station_id
+      - name: observed_at_utc
+        data_tests: [not_null]
+      - name: temperature_c
+        description: Air temperature, °C.
+        data_tests: [not_null]
+      - name: temperature_passed_qc
+        description: >
+          False when GHCNh's own QC failed (lower-case code) or the legacy source code is
+          suspect (2, 6) or erroneous (3, 7). Failed readings are kept, not used.
+        data_tests: [not_null]
+
+unit_tests:
+  - name: qc_codes_follow_ghcnh_documentation
+    description: >
+      Blank, 1 and A pass; legacy 3 (erroneous) and GHCNh's lower-case s (spike) fail. Rows
+      are matched by hash: CSV fixtures for a timestamp-with-time-zone source column are read
+      in the session time zone, so the observation time is not compared here.
+    model: stg_noaa__observations
+    given:
+      - input: source('noaa_raw', 'noaa_ghcnh_observations')
+        format: csv
+        rows: |
+          station_id,observed_at_utc,report_type,temperature_c,temperature_quality_code,_record_hash,_ingested_at
+          S1,2026-10-01 00:51:00,FM15,10.0,,a,2026-10-02 00:00:00
+          S1,2026-10-01 01:51:00,FM15,11.0,1,b,2026-10-02 00:00:00
+          S1,2026-10-01 02:51:00,FM15,12.0,3,c,2026-10-02 00:00:00
+          S1,2026-10-01 03:51:00,FM15,13.0,s,d,2026-10-02 00:00:00
+          S1,2026-10-01 04:51:00,FM15,14.0,A,e,2026-10-02 00:00:00
+    expect:
+      format: csv
+      rows: |
+        record_hash,temperature_passed_qc
+        a,true
+        b,true
+        c,false
+        d,false
+        e,true

@@ -13,7 +13,7 @@ from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
 from pyiceberg.transforms import MonthTransform
-from pyiceberg.types import NestedField, StringType, TimestamptzType
+from pyiceberg.types import DoubleType, NestedField, StringType, TimestamptzType
 
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.routes import Route
@@ -124,6 +124,34 @@ def raw_table_name(route: Route) -> str:
     return "eia_" + route.name.replace("-", "_")
 
 
+NOAA_TABLE = "noaa_ghcnh_observations"
+
+
+def noaa_table_schema() -> Schema:
+    """GHCNh observations as read (one row per station report), plus pipeline metadata."""
+    columns = [
+        ("station_id", StringType(), True),
+        ("station_name", StringType(), False),
+        ("observed_at_utc", TimestamptzType(), True),
+        ("report_type", StringType(), False),
+        ("temperature_c", DoubleType(), False),
+        ("temperature_quality_code", StringType(), False),
+        ("dew_point_c", DoubleType(), False),
+        ("wind_speed_ms", DoubleType(), False),
+        ("relative_humidity_pct", DoubleType(), False),
+        ("_record_hash", StringType(), True),
+        ("_run_id", StringType(), True),
+        ("_route", StringType(), True),
+        ("_ingested_at", TimestamptzType(), True),
+    ]
+    return Schema(
+        *(
+            NestedField(field_id=i, name=name, field_type=kind, required=required)
+            for i, (name, kind, required) in enumerate(columns, start=1)
+        )
+    )
+
+
 class IcebergSink:
     """Appends validated rows to `<raw_namespace>.eia_<route>`.
 
@@ -147,34 +175,48 @@ class IcebergSink:
             props |= {"glue.region": settings.s3_region, "client.region": settings.s3_region}
         return cls(load_catalog("gridpulse", **props), settings.raw_namespace)
 
-    def table(self, route: Route) -> Table:
-        identifier = (self._namespace, raw_table_name(route))
+    def _table(self, name: str, schema: Schema, month_of: str) -> Table:
+        """Load the table, or create it partitioned by month of the `month_of` column."""
+        identifier = (self._namespace, name)
         try:
             return self._catalog.load_table(identifier)
         except NoSuchTableError:
             pass
         self._catalog.create_namespace_if_not_exists(self._namespace)
-        schema = raw_table_schema(route)
-        period_utc = schema.find_field("period_utc").field_id
         spec = PartitionSpec(
             PartitionField(
-                source_id=period_utc,
+                source_id=schema.find_field(month_of).field_id,
                 field_id=1000,
                 transform=MonthTransform(),
-                name="period_utc_month",
+                name=f"{month_of}_month",
             )
         )
         return self._catalog.create_table_if_not_exists(
             identifier, schema=schema, partition_spec=spec
         )
 
-    def append(self, route: Route, records: Sequence[dict]) -> int:
+    def table(self, route: Route) -> Table:
+        return self._table(raw_table_name(route), raw_table_schema(route), "period_utc")
+
+    @staticmethod
+    def _append(table: Table, records: Sequence[dict]) -> int:
         if not records:
             return 0
-        table = self.table(route)
         arrow = pa.Table.from_pylist(list(records), schema=table.schema().as_arrow())
         table.append(arrow)
         return arrow.num_rows
+
+    def append(self, route: Route, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(self.table(route), records)
+
+    def append_noaa(self, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(
+            self._table(NOAA_TABLE, noaa_table_schema(), "observed_at_utc"), records
+        )
 
 
 def ingest_date(ts: datetime) -> str:

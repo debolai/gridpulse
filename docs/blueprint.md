@@ -42,7 +42,7 @@ Three free sources feed the platform: EIA grid data (the core), NOAA weather (th
 | [EIA API v2](https://www.eia.gov/opendata/documentation.php) `electricity/rto/region-data` | Hourly demand (D), day-ahead demand forecast (DF), net generation (NG), total interchange (TI) per balancing authority | Free API key, JSON | Hourly, with revisions to past hours | \~65 BAs × 4 series × 8,760 h ≈ 2.3M rows/year |
 | EIA `electricity/rto/fuel-type-data` | Hourly generation by fuel (coal, gas, nuclear, wind, solar, hydro, other) per BA | Same key | Hourly | \~5M rows/year |
 | EIA `electricity/rto/interchange-data` | Hourly flows between neighboring BAs | Same key | Hourly | \~1.5M rows/year |
-| NOAA Global Hourly (ISD) on the AWS Open Data Registry | Hourly temperature, dew point, wind at airport stations | Public S3 bucket, no key | Daily | Filtered to \~150 stations |
+| NOAA GHCNh (Global Historical Climatology Network hourly) on the AWS Open Data Registry (replaced ISD, ADR-0004) | Hourly temperature, dew point, wind at airport stations | Public S3 bucket `noaa-ghcnh-pds`, no key | Daily, about 1.5 days behind | Filtered to \~150 stations |
 | Reference seeds (built in repo) | BA codes, names, time zones, interconnection; BA-to-weather-station mapping with population weights | dbt seeds (CSV) | Manual, versioned in Git | < 1,000 rows |
 
 **Decision: start the history at July 2018.** Why: demand data goes back to 2015, but generation by fuel type begins in July 2018. A common start date keeps every metric comparable and avoids half-empty dashboards.
@@ -143,7 +143,7 @@ Ingestion re-pulls a rolling window of recent hours on every run and keeps every
 
 **Decision: schema drift policy.** Why: unknown new fields are logged and stored in a JSON overflow column, so the run continues; a missing required field fails the run. This mirrors how production teams treat additive versus breaking changes.
 
-**Weather ingestion.** A daily task reads the NOAA Global Hourly files for the mapped stations directly from the public S3 bucket. Parsing handles the source's quirks: temperatures stored as tenths of a degree with a quality code (for example `+0215,1` means 21.5 °C, quality 1) and `9999` sentinel values for missing readings. Rows failing quality codes are kept but flagged.
+**Weather ingestion (revised 2026-10-13, ADR-0004).** A daily task reads the NOAA GHCNh Parquet files (one per station and year) for the mapped stations directly from the public S3 bucket. GHCNh replaced ISD, which stopped updating in August 2025. Values are already in °C and m/s with nulls for missing readings; stations report several times an hour, and every report is kept. Quality codes follow NOAA's GHCNh documentation (lower-case letters = failed GHCNh checks; legacy 2/6 suspect, 3/7 erroneous); failing readings are kept but flagged and not used.
 
 **S3 raw layout.**
 
@@ -151,7 +151,6 @@ Ingestion re-pulls a rolling window of recent hours on every run and keeps every
 s3://gridpulse-<env>-raw/
   eia/route=region-data/ingest_date=2026-10-12/run_id=<hash>/page=0001.json.gz
   eia/route=fuel-type-data/...
-  noaa/station=<usaf-wban>/year=2026/<file>.csv.gz
   _manifests/run_id=<hash>.json
 ```
 
@@ -192,10 +191,11 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 | Staging | `stg_eia__region_data` | BA × series × hour × version | Cast strings to numbers, rename, drop exact duplicates (same `_record_hash` and same load). Loads are not collapsed by hash, so a value that reverts (A → B → A) still resolves to the newest load |
 | Staging | `stg_eia__fuel_type_data` | BA × fuel × hour × version | Same pattern |
 | Staging | `stg_eia__interchange_data` | BA pair × hour × version | Same pattern |
-| Staging | `stg_noaa__observations` | Station × observation time | Scale tenths, null out `9999`, keep quality codes |
+| Staging | `stg_noaa__observations` | Station × observation time × report type | Latest load per report, QC verdict from GHCNh quality codes |
 | Intermediate | `int_grid__latest_values` | BA × series × hour | Latest version of each value; the revision-resolving model |
 | Intermediate | `int_grid__revisions` | BA × series × hour × version | Each change between versions, with size and lag |
-| Intermediate | `int_weather__ba_hourly` | BA × hour | Population-weighted temperature, gaps of 2 hours or less interpolated |
+| Intermediate | `int_weather__station_hourly` | Station × hour | Mean of QC-passed reports; gaps of 2 hours or less interpolated and flagged |
+| Intermediate | `int_weather__ba_hourly` | BA × hour | Population-weighted temperature with weight coverage |
 | Intermediate | `int_grid__quality_flags` | BA × series × hour | Flags for missing, zero, negative, and spike values |
 | Marts | `dim_balancing_authority` | One row per BA | Current attributes, built from the snapshot below |
 | Marts | `dim_fuel_type` | One row per fuel | Fuel name, category, renewable flag |
@@ -545,3 +545,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — B1: fuel-type and interchange routes, `fct_generation_by_fuel_hourly`, `fct_interchange_hourly` (non-U.S. neighbours kept and flagged), reconciliation tests with a per-BA pass rate and a documented-exceptions seed (PJM interchange).
 - 2026-10-13 — Quality flags: per-series `quality_status` on `fct_grid_hourly` instead of one row-level status; spike = one-hour outlier against both adjacent hours (var `spike_threshold`, 0.5).
 - 2026-10-13 — Revision audit covers all three EIA routes (item = series, fuel or neighbour BA), with revision_type changed/filled/removed and hours_after_period.
+- 2026-10-13 — Weather source: NOAA GHCNh replaces ISD (ISD stopped updating in August 2025; ADR-0004). Seed `ba_weather_stations` covers the six sample BAs with Census Vintage 2025 metro populations; temperature joins `fct_grid_hourly` and fills in on a later run when NOAA publishes.

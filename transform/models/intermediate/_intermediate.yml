@@ -103,6 +103,42 @@ models:
         description: Start of the load that observed the value being replaced.
         data_tests: [not_null]
 
+  - name: int_weather__station_hourly
+    description: >
+      Hourly temperature per station: mean of the QC-passed reports in the hour; gaps of up
+      to var('weather_max_gap_hours') interpolated linearly and flagged. Grain: station × hour.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [station_id, period_utc]
+    columns:
+      - name: is_interpolated
+        data_tests: [not_null]
+
+  - name: int_weather__ba_hourly
+    description: >
+      Population-weighted temperature per balancing authority and hour (seed
+      ba_weather_stations). Missing stations are left out and the others' weights rescaled;
+      weight_coverage is the share of the BA's population weight that reported.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, period_utc]
+    columns:
+      - name: temperature_c
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -60
+                max_value: 60
+      - name: weight_coverage
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1.000001
+
 unit_tests:
   - name: latest_observation_wins_even_when_value_reverts
     description: >
@@ -262,3 +298,63 @@ unit_tests:
       rows: |
         route,ba_code,item_code,period_utc,previous_value_mwh,revised_value_mwh,previous_ingested_at_utc,revised_at_utc
         region-data,PJM,D,2026-08-01 00:00:00,80.0,81.0,2026-08-01 02:00:00,2026-10-10 02:00:00
+
+  - name: station_hours_average_skip_failed_qc_and_fill_short_gaps
+    description: >
+      Reports in an hour are averaged; a failed-QC report is ignored; a 2-hour gap is
+      interpolated linearly; a 3-hour gap stays null.
+    model: int_weather__station_hourly
+    given:
+      - input: ref('stg_noaa__observations')
+        format: csv
+        rows: |
+          station_id,observed_at_utc,temperature_c,temperature_passed_qc,ingested_at_utc
+          S1,2026-10-01 00:00:00,10.0,true,2026-10-02 00:00:00
+          S1,2026-10-01 00:51:00,12.0,true,2026-10-02 00:00:00
+          S1,2026-10-01 01:51:00,99.0,false,2026-10-02 00:00:00
+          S1,2026-10-01 03:51:00,20.0,true,2026-10-02 00:00:00
+          S1,2026-10-01 07:51:00,40.0,true,2026-10-03 00:00:00
+      - input: ref('time_spine_hourly')
+        format: sql
+        rows: |
+          select date_add('hour', h, timestamp '2026-10-01 00:00:00') as date_hour
+          from unnest(sequence(0, 23)) as t (h)
+    expect:
+      format: csv
+      rows: |
+        station_id,period_utc,temperature_c,is_interpolated,last_ingested_at_utc
+        S1,2026-10-01 00:00:00,11.0,false,2026-10-02 00:00:00
+        S1,2026-10-01 01:00:00,14.0,true,2026-10-02 00:00:00
+        S1,2026-10-01 02:00:00,17.0,true,2026-10-02 00:00:00
+        S1,2026-10-01 03:00:00,20.0,false,2026-10-02 00:00:00
+        S1,2026-10-01 04:00:00,,false,
+        S1,2026-10-01 05:00:00,,false,
+        S1,2026-10-01 06:00:00,,false,
+        S1,2026-10-01 07:00:00,40.0,false,2026-10-03 00:00:00
+
+  - name: ba_temperature_is_population_weighted_and_rescaled
+    description: >
+      Weights come from metro populations; when a station has no value the remaining
+      stations are reweighted and weight_coverage drops.
+    model: int_weather__ba_hourly
+    given:
+      - input: ref('ba_weather_stations')
+        format: csv
+        rows: |
+          ba_code,station_id,metro_population
+          AAA,S1,300
+          AAA,S2,100
+      - input: ref('int_weather__station_hourly')
+        format: csv
+        rows: |
+          station_id,period_utc,temperature_c,is_interpolated,last_ingested_at_utc
+          S1,2026-10-01 00:00:00,20.0,false,2026-10-02 00:00:00
+          S2,2026-10-01 00:00:00,10.0,true,2026-10-03 00:00:00
+          S1,2026-10-01 01:00:00,22.0,false,2026-10-02 00:00:00
+          S2,2026-10-01 01:00:00,,false,
+    expect:
+      format: csv
+      rows: |
+        ba_code,period_utc,temperature_c,weight_coverage,stations_reporting,stations_interpolated,last_ingested_at_utc
+        AAA,2026-10-01 00:00:00,17.5,1.0,2,1,2026-10-03 00:00:00
+        AAA,2026-10-01 01:00:00,22.0,0.75,1,0,2026-10-02 00:00:00

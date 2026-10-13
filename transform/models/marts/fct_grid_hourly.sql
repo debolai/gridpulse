@@ -10,9 +10,11 @@
 
 -- One row per balancing authority and UTC hour: the four region-data series side by side,
 -- with local time derived from the BA's IANA zone (DST-aware) and a quality status per series
--- (int_grid__quality_flags; a series absent for the hour is "missing"). Incremental runs
--- rebuild the BA-hours that received a new observation since the last run, plus the hour on
--- each side, because a spike flag depends on the neighbouring hours.
+-- (int_grid__quality_flags; a series absent for the hour is "missing"), and the BA's
+-- population-weighted temperature (int_weather__ba_hourly). Incremental runs rebuild the
+-- BA-hours that received a new observation since the last run, plus the hour on each side
+-- (a spike flag depends on the neighbouring hours), plus hours whose weather changed: NOAA
+-- publishes about a day and a half after EIA, so temperature fills in on a later run.
 
 with
 
@@ -32,6 +34,10 @@ changed_hours as (
     select ba_code, period_utc - interval '1' hour from changed
     union
     select ba_code, period_utc + interval '1' hour from changed
+    union
+    select ba_code, period_utc
+    from {{ ref('int_weather__ba_hourly') }}
+    where last_ingested_at_utc > {{ incremental_watermark('last_ingested_at_utc') }}
 
 ),
 {% endif %}
@@ -82,10 +88,25 @@ statuses as (
 
 ),
 
+weather as (
+
+    select weather.*
+    from {{ ref('int_weather__ba_hourly') }} as weather
+    {% if is_incremental() %}
+    inner join changed_hours
+        on weather.ba_code = changed_hours.ba_code
+        and weather.period_utc = changed_hours.period_utc
+    {% endif %}
+
+),
+
 localized as (
 
     select
         pivoted.*,
+        weather.temperature_c,
+        weather.weight_coverage as temperature_weight_coverage,
+        weather.last_ingested_at_utc as weather_ingested_at_utc,
         statuses.demand_status,
         statuses.forecast_status,
         statuses.generation_status,
@@ -96,6 +117,9 @@ localized as (
     left join statuses
         on pivoted.ba_code = statuses.ba_code
         and pivoted.period_utc = statuses.period_utc
+    left join weather
+        on pivoted.ba_code = weather.ba_code
+        and pivoted.period_utc = weather.period_utc
     left join {{ ref('dim_balancing_authority') }} as ba
         on pivoted.ba_code = ba.ba_code
 
@@ -118,5 +142,12 @@ select
     cast(coalesce(forecast_status, 'missing') as varchar) as demand_forecast_quality_status,
     cast(coalesce(generation_status, 'missing') as varchar) as net_generation_quality_status,
     cast(coalesce(interchange_status, 'missing') as varchar) as total_interchange_quality_status,
-    cast(last_ingested_at_utc as {{ timestamp_type() }}) as last_ingested_at_utc
+    temperature_c,
+    temperature_weight_coverage,
+    -- Latest load of anything in the row, grid or weather (greatest() is null if either is).
+    cast(
+        coalesce(
+            greatest(last_ingested_at_utc, weather_ingested_at_utc), last_ingested_at_utc
+        ) as {{ timestamp_type() }}
+    ) as last_ingested_at_utc
 from localized

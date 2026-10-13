@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample dag-check images \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui \
@@ -116,6 +116,16 @@ extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data -
 extract-sample: ## Load one route for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08 [ROUTE=fuel-type-data]
 	$(COMPOSE) run --rm --build extractor eia --route $(ROUTE) \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
+
+# Stations come from the dbt seed, so the mapping lives in one place.
+WEATHER_STATIONS = $(shell awk -F, 'NR>1 {print $$2}' transform/seeds/ba_weather_stations.csv | sort -u | paste -sd, -)
+
+extract-weather: ## Load NOAA GHCNh weather for the seed's stations: make extract-weather START=2026-07-01 END=2026-10-13
+	$(COMPOSE) run --rm --build extractor noaa --stations $(WEATHER_STATIONS) --start $(START) --end $(END)
+
+extract-weather-aws: ## Same as extract-weather, but into the AWS dev lake
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh noaa --stations $(WEATHER_STATIONS) \
+		--start $(START) --end $(END)
 
 extract-sample-aws: ## Same as extract-sample, but into the AWS dev lake (S3 + Glue)
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route $(ROUTE) \
