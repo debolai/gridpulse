@@ -4,14 +4,14 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws dag-check images \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws backfill-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
 	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
 
 help: ## List available commands
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install pinned dev tools and git hooks
 	uv sync --locked
@@ -187,6 +187,9 @@ extract-weather: ## Load NOAA GHCNh weather for the seed's stations: make extrac
 extract-weather-aws: ## Same as extract-weather, but into the AWS dev lake
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh noaa --stations $(WEATHER_STATIONS) \
 		--start $(START) --end $(END)
+
+backfill-aws: ## One-time history load, all BAs, monthly chunks: make backfill-aws START=2025-10-01 END=2026-10-13
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/backfill-aws.sh $(START) $(END)
 
 extract-sample-aws: ## Same as extract-sample, but into the AWS dev lake (S3 + Glue)
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route $(ROUTE) \
