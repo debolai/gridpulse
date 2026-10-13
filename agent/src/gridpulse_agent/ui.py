@@ -33,6 +33,9 @@ if question:
     headers = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
     with st.spinner("Planning a metric request and querying the semantic layer..."):
         resp = httpx.post(f"{API}/ask", json={"question": question}, headers=headers, timeout=180)
+    if resp.status_code == 503:  # model or metrics API unavailable: the API explains why
+        st.warning(resp.json().get("message", resp.text))
+        st.stop()
     if resp.status_code != 200:
         st.error(f"{resp.status_code}: {resp.text}")
         st.stop()
@@ -44,8 +47,10 @@ if question:
     st.write(out["answer"])
     if out["rows"]:
         frame = pd.DataFrame(out["rows"], columns=out["columns"])
-        st.dataframe(frame, use_container_width=True, hide_index=True)
         time_cols = [c for c in frame.columns if c.startswith("metric_time")]
+        if time_cols and not out["metric_request"]["order_by"]:  # time series read in time order
+            frame = frame.sort_values(time_cols[0])
+        st.dataframe(frame, use_container_width=True, hide_index=True)
         numeric = frame.select_dtypes("number").columns.tolist()
         if time_cols and numeric:
             st.line_chart(frame.set_index(time_cols[0])[numeric])

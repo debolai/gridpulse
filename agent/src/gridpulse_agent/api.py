@@ -5,19 +5,24 @@ POST /ask   {"question": "..."} -> answer, status, metric request, SQL, rows
 """
 
 import hmac
+import logging
 import os
 from functools import lru_cache
 
+import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from gridpulse_agent.brain import LLMBrain
 from gridpulse_agent.config import AgentSettings
 from gridpulse_agent.graph import ask, build_graph
+from gridpulse_agent.model_errors import classify
 from gridpulse_agent.semantic_client import SemanticClient
 
 app = FastAPI(title="GridPulse assistant", version="0.1.0")
+log = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -56,9 +61,42 @@ def health() -> dict:
     }
 
 
+def unavailable(status: str, message: str, detail: str, retry_after_s: int | None) -> JSONResponse:
+    """503 with a message the UI can show as is; never a raw stack trace."""
+    headers = {"Retry-After": str(retry_after_s)} if retry_after_s else None
+    body = {"status": status, "message": message, "detail": detail}
+    return JSONResponse(status_code=503, content=body, headers=headers)
+
+
 @app.post("/ask", dependencies=[Depends(authorize)])
-def ask_endpoint(body: Question) -> dict:
-    return ask(graph(), body.question)
+def ask_endpoint(body: Question):
+    try:
+        return ask(graph(), body.question)
+    except httpx.HTTPError as exc:
+        try:
+            url = str(exc.request.url)
+        except RuntimeError:  # httpx raises when the error carries no request
+            url = ""
+        if not url.startswith(settings().semantic_api_url):
+            raise
+        log.warning("semantic API unavailable: %r", exc)
+        return unavailable(
+            "metrics_unavailable",
+            "The metrics API is not reachable right now. Try again shortly.",
+            type(exc).__name__,
+            30,
+        )
+    except Exception as exc:
+        problem = classify(exc)
+        if problem is None:
+            raise
+        log.warning("model provider unavailable (%s): %s", problem.reason, problem.provider_error)
+        return unavailable(
+            f"model_{problem.reason}",
+            problem.message,
+            problem.provider_error,
+            problem.retry_after_s,
+        )
 
 
 def main() -> None:

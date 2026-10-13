@@ -3,12 +3,12 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose -f local/compose.yaml
 
-.PHONY: help setup lint format test test-integration status doctor clean \
+.PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui \
-	semantic-manifest semantic-api mf bedrock-check agent-api agent-ui agent-eval
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -21,6 +21,18 @@ lint: ## Run all linters (no changes made)
 	uv run ruff format --check .
 	uv run ruff check .
 	uv run yamllint --strict .
+
+# gitleaks reads text on stdin, so it never runs git inside the container (where git can fail
+# and gitleaks would then report "no leaks" instead of an error).
+GITLEAKS := docker run --rm -i -v "$(CURDIR)/.gitleaks.toml:/.gitleaks.toml:ro" \
+	ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+	stdin --config /.gitleaks.toml --redact --no-banner --verbose
+
+secrets-staged: ## Scan staged changes for API keys and other secrets (pre-commit hook)
+	@set -o pipefail; git diff --cached --no-color | $(GITLEAKS)
+
+secrets-history: ## Scan every commit for API keys and other secrets (CI)
+	@set -o pipefail; git log --all -p --no-color | $(GITLEAKS)
 
 format: ## Auto-format Python
 	uv run ruff format .
@@ -188,12 +200,19 @@ mf: ## Run MetricFlow directly, e.g. make mf ARGS="query --metrics demand --grou
 # --- Assistant (agent/) ---------------------------------------------------------
 # Needs the semantic API running (make semantic-api) and a model provider:
 # GRIDPULSE_AGENT_PROVIDER=bedrock (default; AWS login + TODO #7) | anthropic | ollama
+# | openai (temporary, local only, until Bedrock quotas are lifted: ADR-0003, TODO #11)
+
+openai-check: ## Confirm the OpenAI key in .env can call the agent's two models (one tiny request each)
+	uv run --quiet python -m gridpulse_agent.openai_check
 
 agent-api: ## Serve the assistant at http://localhost:8091/docs
 	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent
 
 agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 	uv run streamlit run agent/src/gridpulse_agent/ui.py
+
+demo-gif: ## Record docs/assets/demo.gif from the running UI (needs lake, semantic-api, agent-api, agent-ui)
+	uv run --quiet --with playwright==1.63.0 python agent/scripts/demo_gif.py
 
 agent-eval: ## Score the planner on the golden question set (fails below 90%)
 	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent-eval

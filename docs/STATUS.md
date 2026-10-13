@@ -8,16 +8,18 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A6b — AWS demo deployment: images for semantic API and agent, Terraform compute, `make aws-up` / `make aws-down`. (A5 live eval still waits on TODO #7.)
+- Phase A6b — AWS demo deployment: images for semantic API and agent, Terraform compute, `make aws-up` / `make aws-down`. (A5 eval passes on the temporary OpenAI provider, ADR-0003; final run on Bedrock waits on #11.)
 
 ## Next up
-1. When TODO #7 lands: `make bedrock-check`, then `make agent-eval` (target ≥ 90%), tune prompts if needed, and a live smoke test through `make agent-api` + `make agent-ui`
-2. A6b: container images for semantic API and agent (plus the existing extractor and dbt images) pushed to ECR
-3. A6b: Terraform compute (VPC + NAT, EKS with Spot nodes and Pod Identity, RDS, ECR, workload IAM roles, GitHub OIDC); Kubernetes manifests; `make aws-up` / `make aws-down` with a smoke test and leftover-resource check
+1. Commit this session's work on a branch (semantic image fix, aws-down check, OpenAI provider + guard + ADR-0003, gitleaks, 503 errors, README MVP section + GIF), open a PR, CI green
+2. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
+3. While waiting on #11: Phase B can start (B1 data coverage is independent of the LLM)
 
 ## Blockers
-- TODO #7 (Anthropic use-case form in Bedrock) blocks live LLM calls: `make bedrock-check` shows 4.x models need the form; 5.x models are not yet enabled for this new account.
-- TODO #10 (renew AWS SSO login): Python/boto3 rejects the current SSO token; the CLI's cached role credentials work until ~03:37 UTC. Needed for further Athena work.
+- TODO #11 (AWS Support: Bedrock quota is 0 for every model family on this account) blocks the deployed assistant, the A6 smoke question, and the revert to the blueprint's Bedrock-only setup.
+
+## Temporary deviations (revert when unblocked)
+- ADR-0003: local agent runs on the OpenAI API (`GRIDPULSE_AGENT_PROVIDER=openai`) instead of Claude on Bedrock. Revert when `make bedrock-check` shows OK (TODO #11); checklist in the ADR.
 
 ## Phase A — MVP slice
 - [x] **A0 Foundations** — 2026-10-12 — done when `make lint test` passes locally and in GitHub Actions
@@ -40,11 +42,18 @@ Repo: https://github.com/debolai/gridpulse
 - [ ] **A5 Minimal agent** — done when eval accuracy ≥ 90% and an injected wrong number is caught
   - [x] Injected wrong number is caught — 2026-10-12. `test_ground_check.py` + `test_graph.py`: a wrong figure triggers one rewrite with feedback, a persistent one falls back to the raw table; computed (summed) numbers and wrong rounding are rejected.
   - [x] Offline build — 2026-10-12: LangGraph graph (route → plan → validate → execute → answer → ground-check, ≤2 replans on validator/API errors), provider switch (bedrock | anthropic | ollama), FastAPI `/ask` with optional bearer token, Streamlit UI, 17-case golden set + scorer, contract test against the semantic API. 30 agent unit tests (74 total) pass.
-  - [ ] Eval accuracy ≥ 90% — blocked on TODO #7.
+  - [ ] Eval accuracy ≥ 90% — **provisional pass on OpenAI, 2026-10-13** (ADR-0003): `make agent-eval` 16/17 (94%; the miss read "yesterday" as today), then 17/17 (100%) with GPT-6 Luna router + GPT-6.1 Sol planner. Live `/ask` "What was PJM total demand in July 2026?" → answered, 85,612,424 MWh, ground-check clean on the first attempt; equals the semantic API and the Athena smoke figure. Tick for good after the same eval passes on Bedrock (TODO #11).
 - [ ] **A6 Scheduling + AWS** — done when `make aws-down && make aws-up` restores a demo that answers the smoke question
   - [x] A6a local scheduling — 2026-10-12. Airflow 3.3.2 (`make up-orch`, UI http://localhost:8088): `eia_hourly` (cron :15, catchup=False, eia_api pool, one extract at a time) publishes the raw_eia asset → `dbt_build` (asset-triggered dbt container) → semantic cache refresh. Evidence: from `make reset`, stack up in 19 s, triggered run succeeded, dbt_build asset-triggered and succeeded, marts populated (432 rows = 6 BAs × 72 h). Catch-up: watermark wound back to Oct 7 → one run loaded Oct 7 → Oct 12 (3,190 rows) and advanced the watermark. `make dag-check` OK.
   - [ ] A6b AWS demo deployment
+    - [x] First `make aws-up` — 2026-10-12. EKS (2 arm64 Spot nodes), semantic API + agent API + UI images in ECR, Helm release; on the redeploy, Terraform had nothing to change and the deploy took ~1 min. Smoke: `PJM demand, July 2026: semantic API 85,612,424 vs Athena 85,612,424 -> MATCH`. The assistant returns 500 (Bedrock `ThrottlingException: Too many tokens per day`, TODO #11).
+    - [x] `make aws-down` — 2026-10-13. Terraform: 58 destroyed. Verified directly: no EKS cluster, RDS instance, running EC2, Elastic IP or gridpulse VPC; the flagged NAT gateway is `deleted`, and the VPC endpoint and security group are `NotFound`.
+    - [x] Clear errors instead of 500 — 2026-10-13. Model-provider failures (Bedrock ClientError codes, OpenAI/Anthropic status codes, connection errors) return 503 `model_throttled` / `model_access_denied` / `model_unreachable` with a plain message and `Retry-After`; an unreachable semantic API returns 503 `metrics_unavailable` (matched by URL); anything else stays 500. UI shows the message. 17 tests; live: throttled Bedrock → `503`, `retry-after: 60`, "The language model is rate-limited or out of quota right now."
+    - [ ] A full `make aws-down && make aws-up` cycle answers the smoke question (needs TODO #11)
 - [ ] **MVP checkpoint** — README MVP section, demo GIF, "still to come" list
+  - [x] README MVP section (flow diagram, evidence table, temporary-OpenAI note) and "still to come" list — 2026-10-13
+  - [x] Demo GIF — 2026-10-13. `make demo-gif` drives the local UI with Playwright 1.63.0 on the installed Chrome and stitches frames with Pillow → `docs/assets/demo.gif` (14 frames, 212 KB): typing, spinner, verified answer, chart, metric request. Recorded on the OpenAI provider; re-record after the Bedrock revert.
+  - [ ] Closes with A5 and A6 (both wait on TODO #11 for their Bedrock runs)
 
 ## Phase B — Depth
 - [ ] B1 Data coverage (fuel, interchange, NOAA, flags, revisions, snapshots, reconciliation, Elementary)
@@ -59,6 +68,12 @@ Repo: https://github.com/debolai/gridpulse
 - (empty — park scope creep here instead of starting it)
 
 ## Findings to fold into the build
+- 2026-10-12: The dbt manifest bakes in the target's catalog (`lake` vs `awsdatacatalog`). The semantic image parsed at build time with the default `local` target, so on EKS every query failed with `CATALOG_NOT_FOUND: Catalog 'lake'`. The entrypoint now re-parses for `DBT_TARGET`.
+- 2026-10-13: The UI showed time-series rows in arrival order when the planner omitted `order_by`; it now sorts by the time column (the chart already did).
+- 2026-10-13: Editing an OpenAI key's permissions after creation left about half of all calls failing with 401 `missing_scope` for 15+ minutes; a fresh key created with the right scope worked at once (12/12). Restricted keys need only Model capabilities = Write (`model.request`); listing models needs `api.model.read`, so `make openai-check` makes one tiny call per model instead.
+- 2026-10-13: gitleaks in a container fails open when it runs git itself (git errors, then "no leaks found", exit 0). The hook pipes `git diff --cached` into `gitleaks stdin` instead; verified it blocks a fake OpenAI key and passes clean changes. Full history is clean apart from the local stack's dummy SeaweedFS credentials (allowlisted in `.gitleaks.toml`).
+- 2026-10-13: The tagging API keeps listing deleted NAT gateways, VPC endpoints and security groups long after they are gone, so `aws-down` reported 3 false leftovers. The check now confirms each flagged EC2 resource against EC2 itself; other types still count as present.
+- 2026-10-13: The new account's Bedrock restriction is account-wide: Claude, OpenAI gpt-oss and Amazon Nova all fail with "Too many tokens per day", and OpenAI GPT-5.5/6.x are "not available for this account". Switching model families on Bedrock doesn't help; only TODO #11 or a direct API provider does.
 - 2026-10-12: Lakekeeper remote signing caused intermittent "Access Denied" on Iceberg writes under concurrency; disabled for the local warehouse (clients write with their own S3 credentials, like IAM roles on AWS). Three concurrent writers then all succeeded.
 - 2026-10-12: Airflow 3: manual runs have no data interval (`data_interval_end` is undefined, not None); DAGs anchor on `dag_run.run_after`. Marking a run failed doesn't stop a running task, so extracts set `max_active_tis_per_dag=1`.
 - 2026-10-12: SeaweedFS reports healthy before its access keys load; the health check now makes a signed S3 request.
@@ -85,3 +100,8 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12 — A4 complete: MetricFlow spike passed on Trino and Athena (ADR-0002); 6 governed metrics; semantic API with SQL ground-truth tests. Next: A5 agent.
 - 2026-10-12 — A5 offline parts complete (graph, validator, ground-check, API, UI, golden set); live eval waits on the Bedrock use-case form (TODO #7). Next: A6 while waiting.
 - 2026-10-12 — A6a complete: Airflow 3 local scheduling with asset-driven dbt and gap catch-up via the extractor watermark; fixed remote-signing write failures. Next: A6b AWS deployment (plan first).
+- 2026-10-12 — A6b: first `make aws-up` deployed; smoke failed on a build-time dbt manifest for the wrong target (fixed: parse at container start); redeploy matches Athena exactly. Assistant still throttled by the Bedrock quota (TODO #11). 
+- 2026-10-13 — A6b: `make aws-down` verified nothing billable left; fixed false leftovers in its check. Bedrock test showed the quota block covers every model family (TODO #11 updated). Next: pick a direct API provider or wait for #11.
+- 2026-10-13 — Temporary OpenAI provider (local only, ADR-0003) with a Kubernetes guard and `make openai-check`; gitleaks added to pre-commit and CI. Waiting on TODO #12 (key) for the live eval; revert to Bedrock when #11 lands.
+- 2026-10-13 — TODO #12 done (second key; the edited first key failed half its calls). A5 eval passes on OpenAI: 94% then 100%; live `/ask` answer matches the semantic API and Athena. Provisional until the Bedrock rerun (#11). Local stack stopped, caches cleaned.
+- 2026-10-13 — Agent API returns 503 with a clear reason for model/metrics outages (live-checked on throttled Bedrock). README MVP section, flow diagram, evidence table and Phase B list; demo GIF recorded with `make demo-gif`. Local stack stopped. Next: commit + PR.

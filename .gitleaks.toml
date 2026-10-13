@@ -1,0 +1,8 @@
+# gitleaks rules: the defaults, plus an allowlist for credentials that are committed on purpose.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Dummy credentials for the offline local stack (local/compose.yaml); not secrets"
+regexTarget = "line"
+regexes = ['''gridpulse-local-secret''']

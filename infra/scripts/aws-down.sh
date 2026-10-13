@@ -15,17 +15,37 @@ tf_init
 "${TF[@]}" destroy -input=false -auto-approve
 
 step "Leftover check: resources tagged gridpulse:lifecycle=ephemeral"
+# The tagging API keeps listing deleted resources for up to an hour (NAT gateways, VPC endpoints,
+# security groups), so each listed EC2 resource is confirmed against EC2 itself.
+still_exists() {
+  local arn=$1 id=${1##*/}
+  case "$arn" in
+    *:natgateway/*)
+      [ "$(aws ec2 describe-nat-gateways --nat-gateway-ids "$id" \
+        --query 'NatGateways[0].State' --output text 2>/dev/null || echo deleted)" != deleted ] ;;
+    *:vpc-endpoint/*)
+      [ "$(aws ec2 describe-vpc-endpoints --vpc-endpoint-ids "$id" \
+        --query 'VpcEndpoints[0].State' --output text 2>/dev/null || echo deleted)" != deleted ] ;;
+    *:security-group/*) aws ec2 describe-security-groups --group-ids "$id" >/dev/null 2>&1 ;;
+    *:subnet/*) aws ec2 describe-subnets --subnet-ids "$id" >/dev/null 2>&1 ;;
+    *:vpc/*) aws ec2 describe-vpcs --vpc-ids "$id" >/dev/null 2>&1 ;;
+    *) true ;;  # anything else counts as present until it leaves the tag index
+  esac
+}
 leftovers=""
-for _ in $(seq 1 12); do  # the tagging API lags deletes by a minute or two
-  leftovers=$(aws resourcegroupstaggingapi get-resources \
+for _ in $(seq 1 12); do
+  leftovers=""
+  for arn in $(aws resourcegroupstaggingapi get-resources \
     --tag-filters Key=gridpulse:lifecycle,Values=ephemeral \
-    --query 'ResourceTagMappingList[].ResourceARN' --output text)
+    --query 'ResourceTagMappingList[].ResourceARN' --output text); do
+    if still_exists "$arn"; then leftovers="$leftovers $arn"; fi
+  done
   [ -z "$leftovers" ] && break
   sleep 15
 done
 kubectl config delete-context "$KUBE_CONTEXT" >/dev/null 2>&1 || true
 if [ -n "$leftovers" ]; then
-  echo "STILL PRESENT (check and delete):"; echo "$leftovers" | tr '\t' '\n'
+  echo "STILL PRESENT (check and delete):"; echo "$leftovers" | tr ' ' '\n' | sed '/^$/d'
   exit 1
 fi
 echo "Nothing left. Down in $(( ($(date +%s) - started) / 60 )) min. Idle cost is the foundation only."
