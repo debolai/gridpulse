@@ -37,6 +37,7 @@ class AgentSettings(BaseSettings):
     max_plan_attempts: int = 3  # first plan + two retries after validation errors
     max_window_days: int = 400
     max_rows: int = 1000
+    revision_window_days: int = 30  # eia_daily_sweep re-reads this many days
     api_token: SecretStr | None = None  # demo bearer token for POST /ask; unset = open locally
 
     @model_validator(mode="after")

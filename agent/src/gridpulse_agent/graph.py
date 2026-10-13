@@ -1,22 +1,25 @@
 """The GridPulse assistant as an explicit LangGraph graph.
 
-    route ─┬─ metric ─> plan ─> validate ─ok─> execute ─> answer ─> ground_check ─> END
-           │             ^          │             │                      │
-           │             └─ errors ─┘ (≤2 retries) └─ API rejects: replan └─ unsupported number:
-           ├─ definition ─> define ─> END                                   rewrite once, then
-           └─ out_of_scope ─> END                                           fall back to a table
+    route ─┬─ metric ─> plan ─> validate ─ok─> execute ─> inspect ─> answer ─> ground_check ─> END
+           │             ^          │             │            │                     │
+           │             └─ errors ─┘ (≤2 retries) │            └─ no rows: END       │
+           │                                       └─ API rejects: replan            │
+           ├─ definition ─> define ─> END                  unsupported number: rewrite once,
+           └─ out_of_scope ─> END                          then fall back to a table
 
-The model only routes, plans and writes. Validation, execution and the number check are code,
-and so is the note on what the metrics left out (flagged values), appended to every answer.
-Clarifying questions and result inspection (completeness, revision window) join in phase B4.
+The model only routes, plans and writes. Validation, execution, inspection and the number check
+are code, and so are the lines appended to every answer: what the metrics left out (flagged
+values) and the inspection's caveats (completeness, latest hour, revision window).
+Clarifying questions join in phase B4.
 """
 
 from datetime import UTC, date, datetime
 from typing import Any, Literal, TypedDict
 
+import httpx
 from langgraph.graph import END, START, StateGraph
 
-from gridpulse_agent import prompts
+from gridpulse_agent import inspection, prompts
 from gridpulse_agent.brain import Brain
 from gridpulse_agent.config import AgentSettings
 from gridpulse_agent.contract import MetricRequest
@@ -36,7 +39,10 @@ class State(TypedDict, total=False):
     answer: str
     unsupported: list[str]
     rewrites: int
-    status: Literal["answered", "definition", "out_of_scope", "no_valid_request", "fallback_table"]
+    caveats: list[str]
+    status: Literal[
+        "answered", "definition", "out_of_scope", "no_valid_request", "fallback_table", "no_data"
+    ]
 
 
 def _table(result: dict, limit: int = 20) -> str:
@@ -86,6 +92,26 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         except SemanticAPIError as exc:
             return {"result": None, "errors": [f"The semantic API rejected the request: {exc}"]}
 
+    def inspect(state: State) -> State:
+        request = state["request"]
+        try:
+            coverage = semantic.coverage(request)
+        except (SemanticAPIError, httpx.HTTPError):
+            coverage = None  # a caveat says so; the answer itself still stands
+        try:
+            latest = semantic.latest_hour()
+        except (SemanticAPIError, httpx.HTTPError):
+            latest = None
+        caveats = inspection.caveats(request, coverage, latest, settings.revision_window_days)
+        if inspection.has_data(state["result"], request.metrics):
+            return {"caveats": caveats}
+        return {
+            "caveats": caveats,
+            "status": "no_data",
+            "answer": f"No data matched this request ({', '.join(request.metrics)}, "
+            f"{request.start:%Y-%m-%d %H:%M} to {request.end:%Y-%m-%d %H:%M} UTC).",
+        }
+
     def give_up(state: State) -> State:
         problems = "; ".join(state.get("errors", []))
         return {
@@ -129,8 +155,11 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
 
     def after_execute(state: State) -> str:
         if state.get("result") is not None:
-            return "answer"
+            return "inspect"
         return "plan" if state["attempts"] < settings.max_plan_attempts else "give_up"
+
+    def after_inspect(state: State) -> str:
+        return END if state.get("status") == "no_data" else "answer"
 
     def after_ground_check(state: State) -> str:
         return "answer" if state.get("status") is None and state.get("unsupported") else END
@@ -143,6 +172,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         ("plan", plan),
         ("validate", check),
         ("execute", execute),
+        ("inspect", inspect),
         ("give_up", give_up),
         ("answer", answer),
         ("ground_check", ground_check),
@@ -152,7 +182,8 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
     g.add_conditional_edges("route", after_route, ["plan", "define", "out_of_scope"])
     g.add_edge("plan", "validate")
     g.add_conditional_edges("validate", after_check, ["execute", "plan", "give_up"])
-    g.add_conditional_edges("execute", after_execute, ["answer", "plan", "give_up"])
+    g.add_conditional_edges("execute", after_execute, ["inspect", "plan", "give_up"])
+    g.add_conditional_edges("inspect", after_inspect, ["answer", END])
     g.add_edge("answer", "ground_check")
     g.add_conditional_edges("ground_check", after_ground_check, ["answer", END])
     for terminal in ("define", "out_of_scope", "give_up"):
@@ -164,9 +195,12 @@ def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
     state = graph.invoke({"question": question, "today": today or datetime.now(UTC).date()})
     request = state.get("request")
     result = state.get("result") or {}
-    notes = result.get("notes", []) if state["status"] in ("answered", "fallback_table") else []
+    answered = state["status"] in ("answered", "fallback_table")
+    notes = result.get("notes", []) if answered else []
+    caveats = state.get("caveats", []) if answered or state["status"] == "no_data" else []
+    extra = [f"Note: {n}" for n in notes] + caveats
     return {
-        "answer": "\n\n".join([state["answer"], *(f"Note: {n}" for n in notes)]),
+        "answer": "\n\n".join([state["answer"], *extra]),
         "status": state["status"],
         "route": state.get("route"),
         "metric_request": request.model_dump(mode="json") if request else None,
@@ -176,4 +210,5 @@ def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
         "attempts": state.get("attempts", 0),
         "unsupported_numbers": state.get("unsupported", []),
         "notes": notes,
+        "caveats": caveats,
     }

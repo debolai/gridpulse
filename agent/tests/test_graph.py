@@ -29,14 +29,51 @@ def test_answer_ends_with_the_quality_notes(catalog, settings):
     brain = ScriptedBrain(plans=[req()], answers=["PJM: 70,276,500 MWh."])
     out = run(brain, FakeSemantic(catalog, [{**RESULT, "notes": [note]}]), settings)
     assert out["status"] == "answered" and out["notes"] == [note]
-    assert out["answer"] == f"PJM: 70,276,500 MWh.\n\nNote: {note}"
+    assert out["answer"].startswith(f"PJM: 70,276,500 MWh.\n\nNote: {note}\n\nData: 100%")
+
+
+def test_inspection_caveats_end_the_answer(catalog, settings):
+    brain = ScriptedBrain(plans=[req()], answers=["PJM: 70,276,500 MWh."])
+    semantic = FakeSemantic(catalog, [RESULT], coverage=[["PJM", 700, 720]])
+    out = run(brain, semantic, settings)
+    assert out["caveats"][:2] == [
+        "Data: 97.2% of expected BA-hours have valid demand.",
+        "Latest hour loaded: 2026-10-12 09:00 UTC.",
+    ]
+    assert out["caveats"][2].startswith("Hours after 2026-09-12 are recent")  # Sept ends Oct 1
+    assert out["answer"].endswith(out["caveats"][2])
+    assert semantic.coverage_requests[0].start == req().start  # same window as the answer
+
+
+def test_empty_result_skips_the_model(catalog, settings):
+    brain = ScriptedBrain(plans=[req()])  # no answers queued: the model must not be asked
+    empty = {"columns": ["demand"], "rows": [[None]], "sql": "select ..."}  # total, no data
+    out = run(brain, FakeSemantic(catalog, [empty]), settings)
+    assert out["status"] == "no_data" and brain.answer_calls == []
+    assert out["answer"].startswith("No data matched this request (demand, 2026-09-01 00:00")
+    assert "Latest hour loaded" in out["answer"]
+
+
+def test_failed_coverage_check_still_answers(catalog, settings):
+    from gridpulse_agent.semantic_client import SemanticAPIError
+
+    brain = ScriptedBrain(plans=[req()], answers=["PJM: 70,276,500 MWh."])
+    semantic = FakeSemantic(catalog, [RESULT], coverage=SemanticAPIError("down"))
+    out = run(brain, semantic, settings)
+    assert out["status"] == "answered"
+    assert "Couldn't check data completeness." in out["caveats"]
 
 
 def test_validation_errors_go_back_to_the_planner(catalog, settings):
     bad = req(metrics=["peak_demand"])  # pooled across BAs: blocked by code
     good = req(metrics=["peak_demand"], group_by=["balancing_authority"])
-    brain = ScriptedBrain(plans=[bad, good], answers=["PJM peaked at 70,276,500."])
-    semantic = FakeSemantic(catalog, [RESULT])
+    brain = ScriptedBrain(plans=[bad, good], answers=["PJM peaked at 152,547."])
+    peak = {
+        **RESULT,
+        "columns": ["balancing_authority", "peak_demand"],
+        "rows": [["PJM", 152547.0]],
+    }
+    semantic = FakeSemantic(catalog, [peak])
     out = run(brain, semantic, settings)
     assert out["status"] == "answered" and out["attempts"] == 2
     assert "single BA-hour" in brain.plan_calls[1]["errors"][0]
