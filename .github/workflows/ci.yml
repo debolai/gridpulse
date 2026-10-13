@@ -53,7 +53,10 @@ jobs:
           build transform
           build semantic
           build agent
-          build orchestration --build-arg TRANSFORM_IMAGE=gridpulse/transform:ci
+          # Starts FROM the transform image just built. The cached builder runs in its own
+          # container and can't see local images, so this one uses Docker's built-in builder.
+          docker buildx build --builder default --load -f orchestration/Dockerfile \
+            --build-arg TRANSFORM_IMAGE=gridpulse/transform:ci -t gridpulse/orchestration:ci .
       - name: Smoke test the images
         run: |
           docker run --rm gridpulse/ingestion:ci --help

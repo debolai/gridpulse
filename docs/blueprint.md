@@ -390,8 +390,8 @@ gridpulse/
 
 | Workflow | Trigger | Steps |
 | --- | --- | --- |
-| `ci.yml` | Pull request | Lint (`ruff`, `sqlfluff`, `yamllint`, `hadolint`); `pytest` for ingestion, agent, and DAG integrity; dbt slim CI build into `ci_pr_<n>`; Terraform `fmt`, `validate`, `tflint`, `checkov`, and `plan` posted as a PR comment; Docker builds; agent evals when `agent/` or `semantic/` changed |
-| `cd.yml` | Merge to `main` | Build and push images tagged by SHA; `terraform apply` behind a GitHub environment that requires approval; `helm upgrade`; upload the prod dbt manifest to S3; publish dbt docs to GitHub Pages |
+| `ci.yml` | Pull request | Lint (`ruff`, `sqlfluff`, `yamllint`, `hadolint`); `pytest` for ingestion, agent, and DAG integrity; dbt slim CI build into `ci_pr_<n>`; Terraform `fmt`, `validate`, `tflint`, `checkov`, and `plan` posted as a PR comment; Docker builds; agent evals when `agent/` or `semantic/` changed (2026-10-13: on Bedrock through the CI role; skipped until TODO #11 lifts the quota, so no API key is stored in GitHub) |
+| `cd.yml` | Merge to `main` | Build and push images tagged by SHA; `terraform apply` behind a GitHub environment that requires approval; `helm upgrade` with a smoke test and rollback when the demo cluster is up (ADR-0009: skipped with a notice when it is down); upload the prod dbt manifest to S3; publish dbt docs to GitHub Pages |
 | `pr-cleanup.yml` | Pull request closed | Drop the `ci_pr_<n>` Glue databases and their S3 data |
 | `nightly.yml` | Daily | Dependency and image vulnerability scans |
 
@@ -563,3 +563,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — B4 slice 2: clarifying questions. A region rule in code (all active BAs from a hidden `active_balancing_authorities` metric) plus the planner's `clarify` field; LangGraph interrupt, one question per turn, resumed by `thread_id`. Checkpoints use an in-memory saver until slice 3.
 - 2026-10-13 — B4 slice 3: conversation memory in LangGraph's Postgres checkpointer (database `agent` on the shared local Postgres; in memory when no DSN is set). The router and planner see the last 3 answered questions with their requests, so follow-ups adjust the earlier request. `POST /ask/stream` (SSE) and a chat UI.
 - 2026-10-13 — B4 slice 4: 53-question golden set (every agent metric and saved query, clarification, negative and follow-up cases); `gridpulse-agent-eval --e2e` runs the full graph; scores stored in Postgres `eval_runs`; the nightly DAG runs the planner gate, then end to end.
+- 2026-10-13 — B5 plan: CD deploys to EKS only when the demo cluster is up (ADR-0009); the agent eval in CI uses Bedrock and waits for TODO #11. B5 slice 1: sqlfluff (Jinja templater with dbt builtins and macro stand-ins; layout rules this project does on purpose excluded) and hadolint in `make lint`; CI builds and smoke-tests all five images and checks DAGs on both runtimes.
