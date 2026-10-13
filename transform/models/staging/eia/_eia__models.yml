@@ -32,3 +32,36 @@ models:
       - name: ingested_at_utc
         description: Start time of the load that observed this value.
         data_tests: [not_null]
+
+  - name: stg_eia__fuel_type_data
+    description: >
+      Typed EIA fuel-type observations. Grain: BA × fuel × hour × load. Values are cast from
+      strings to doubles; exact duplicates within a load are dropped.
+    columns:
+      - name: ba_code
+        description: Balancing authority code (EIA respondent).
+        data_tests: [not_null]
+      - name: fuel_code
+        description: EIA fuel code. A code missing from seed `fuel_type_map` warns, not fails.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fuel_type_map')
+                field: fuel_code
+              config:
+                severity: warn
+      - name: period_utc
+        description: Start of the hour, UTC.
+        data_tests: [not_null]
+      - name: generation_mwh
+        description: Net generation in MWh for the hour; negative for storage while charging.
+      - name: value_units
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["megawatthours"]
+      - name: record_hash
+        data_tests: [not_null]
+      - name: ingested_at_utc
+        data_tests: [not_null]

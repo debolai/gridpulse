@@ -1,0 +1,411 @@
+{
+ "warnings": [
+  {
+   "warning": "incomplete return",
+   "description": "The API can only return 5000 rows in JSON format.  Please consider constraining your request with facet, start, or end, or using offset to paginate results."
+  }
+ ],
+ "response": {
+  "total": "108",
+  "dateFormat": "YYYY-MM-DD\"T\"HH24",
+  "frequency": "hourly",
+  "data": [
+   {
+    "period": "2026-10-01T00",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "CEN",
+    "toba-name": "Centro Nacional de Control de Energia",
+    "value": "33",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "SWPP",
+    "toba-name": "Southwest Power Pool",
+    "value": "-136",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLE",
+    "toba-name": "Duke Energy Progress East",
+    "value": "-278",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLW",
+    "toba-name": "Duke Energy Progress West",
+    "value": "55",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "DUK",
+    "toba-name": "Duke Energy Carolinas",
+    "value": "-322",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "LGEE",
+    "toba-name": "LG&E and KU Services Company as agent for Louisville Gas and Electric Company and Kentucky Utilities Company",
+    "value": "-454",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "MISO",
+    "toba-name": "Midcontinent Independent System Operator, Inc.",
+    "value": "2193",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "NYIS",
+    "toba-name": "New York Independent System Operator",
+    "value": "1418",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T00",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "TVA",
+    "toba-name": "Tennessee Valley Authority",
+    "value": "-1276",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "CEN",
+    "toba-name": "Centro Nacional de Control de Energia",
+    "value": "33",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "SWPP",
+    "toba-name": "Southwest Power Pool",
+    "value": "-292",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLE",
+    "toba-name": "Duke Energy Progress East",
+    "value": "-487",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLW",
+    "toba-name": "Duke Energy Progress West",
+    "value": "63",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "DUK",
+    "toba-name": "Duke Energy Carolinas",
+    "value": "-131",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "LGEE",
+    "toba-name": "LG&E and KU Services Company as agent for Louisville Gas and Electric Company and Kentucky Utilities Company",
+    "value": "-440",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "MISO",
+    "toba-name": "Midcontinent Independent System Operator, Inc.",
+    "value": "1600",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "NYIS",
+    "toba-name": "New York Independent System Operator",
+    "value": "970",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T01",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "TVA",
+    "toba-name": "Tennessee Valley Authority",
+    "value": "-1216",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "CEN",
+    "toba-name": "Centro Nacional de Control de Energia",
+    "value": "33",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "SWPP",
+    "toba-name": "Southwest Power Pool",
+    "value": "-412",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLE",
+    "toba-name": "Duke Energy Progress East",
+    "value": "-475",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLW",
+    "toba-name": "Duke Energy Progress West",
+    "value": "35",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "DUK",
+    "toba-name": "Duke Energy Carolinas",
+    "value": "-151",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "LGEE",
+    "toba-name": "LG&E and KU Services Company as agent for Louisville Gas and Electric Company and Kentucky Utilities Company",
+    "value": "-334",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "MISO",
+    "toba-name": "Midcontinent Independent System Operator, Inc.",
+    "value": "1376",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "NYIS",
+    "toba-name": "New York Independent System Operator",
+    "value": "790",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T02",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "TVA",
+    "toba-name": "Tennessee Valley Authority",
+    "value": "-1185",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "CEN",
+    "toba-name": "Centro Nacional de Control de Energia",
+    "value": "33",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "SWPP",
+    "toba-name": "Southwest Power Pool",
+    "value": "-393",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLE",
+    "toba-name": "Duke Energy Progress East",
+    "value": "-424",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLW",
+    "toba-name": "Duke Energy Progress West",
+    "value": "52",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "DUK",
+    "toba-name": "Duke Energy Carolinas",
+    "value": "-79",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "LGEE",
+    "toba-name": "LG&E and KU Services Company as agent for Louisville Gas and Electric Company and Kentucky Utilities Company",
+    "value": "-208",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "MISO",
+    "toba-name": "Midcontinent Independent System Operator, Inc.",
+    "value": "1981",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "NYIS",
+    "toba-name": "New York Independent System Operator",
+    "value": "228",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T03",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "TVA",
+    "toba-name": "Tennessee Valley Authority",
+    "value": "-943",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T04",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "CEN",
+    "toba-name": "Centro Nacional de Control de Energia",
+    "value": "34",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T04",
+    "fromba": "ERCO",
+    "fromba-name": "Electric Reliability Council of Texas, Inc.",
+    "toba": "SWPP",
+    "toba-name": "Southwest Power Pool",
+    "value": "-463",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T04",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLE",
+    "toba-name": "Duke Energy Progress East",
+    "value": "-684",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T04",
+    "fromba": "PJM",
+    "fromba-name": "PJM Interconnection, LLC",
+    "toba": "CPLW",
+    "toba-name": "Duke Energy Progress West",
+    "value": "38",
+    "value-units": "megawatthours"
+   }
+  ],
+  "description": "Daily interchange between neighboring balancing authorities.  \n    Source: Form EIA-930\n    Product: Hourly Electric Grid Monitor"
+ },
+ "request": {
+  "command": "/v2/electricity/rto/interchange-data/data/",
+  "params": {
+   "frequency": "hourly",
+   "data": [
+    "value"
+   ],
+   "start": "2026-10-01T00",
+   "end": "2026-10-01T11",
+   "sort": [
+    {
+     "column": "period",
+     "direction": "asc"
+    },
+    {
+     "column": "fromba",
+     "direction": "asc"
+    },
+    {
+     "column": "toba",
+     "direction": "asc"
+    }
+   ],
+   "facets": {
+    "fromba": [
+     "ERCO",
+     "PJM"
+    ]
+   },
+   "offset": "0",
+   "length": "40"
+  }
+ },
+ "apiVersion": "2.1.14",
+ "ExcelAddInVersion": "2.1.0"
+}

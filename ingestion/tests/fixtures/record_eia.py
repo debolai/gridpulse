@@ -1,18 +1,19 @@
 """Re-record the EIA fixtures from the live API (needs EIA_API_KEY in .env).
 
-    uv run python ingestion/tests/fixtures/record_eia.py
+Records each route for two BAs over 12 hours with a small page size, so tests exercise real
+multi-page responses. Re-record when the API changes shape:
 
-Records region-data for two BAs over 12 hours with a small page size, so tests exercise real
-multi-page responses (40 + 40 + 16 rows). Re-record when the API changes shape.
+    uv run python ingestion/tests/fixtures/record_eia.py [route ...]   # default: all routes
 """
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.client import EIAClient
-from gridpulse_ingestion.eia.routes import REGION_DATA
+from gridpulse_ingestion.eia.routes import ROUTES, Route
 
 HERE = Path(__file__).parent
 START = datetime(2026, 10, 1, 0, tzinfo=UTC)
@@ -21,13 +22,10 @@ FACETS = ("ERCO", "PJM")
 PAGE_SIZE = 40
 
 
-def main() -> None:
-    settings = Settings()
-    key = settings.eia_api_key.get_secret_value()
-    client = EIAClient(key, page_size=PAGE_SIZE)
-    out = HERE / "eia_region_data"
+def record(client: EIAClient, key: str, route: Route) -> None:
+    out = HERE / ("eia_" + route.name.replace("-", "_"))
     out.mkdir(exist_ok=True)
-    pages = list(client.fetch_window(REGION_DATA, START, END, FACETS))
+    pages = list(client.fetch_window(route, START, END, FACETS))
     for page in pages:
         text = page.raw.decode()
         assert key not in text, "API key found in response; refusing to write fixture"
@@ -43,7 +41,14 @@ def main() -> None:
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=1) + "\n")
-    print(json.dumps(meta))
+    print(route.name, json.dumps(meta))
+
+
+def main() -> None:
+    key = Settings().eia_api_key.get_secret_value()
+    client = EIAClient(key, page_size=PAGE_SIZE)
+    for name in sys.argv[1:] or sorted(ROUTES):
+        record(client, key, ROUTES[name])
 
 
 if __name__ == "__main__":

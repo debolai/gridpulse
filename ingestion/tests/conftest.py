@@ -1,7 +1,7 @@
-import json
 from pathlib import Path
 
 import pytest
+from eia_fixtures import recorded_meta, recorded_pages
 
 from gridpulse_ingestion.storage import RawStore
 
@@ -10,13 +10,13 @@ FIXTURES = Path(__file__).parent / "fixtures" / "eia_region_data"
 
 @pytest.fixture
 def region_pages() -> list[dict]:
-    """Real EIA responses: ERCO + PJM, 2026-10-01T00..T12, page size 40 (40 + 40 + 16 rows)."""
-    return [json.loads(p.read_text()) for p in sorted(FIXTURES.glob("page_*.json"))]
+    """region-data: 40 + 40 + 16 rows."""
+    return recorded_pages("region-data")
 
 
 @pytest.fixture
 def region_meta() -> dict:
-    return json.loads((FIXTURES / "meta.json").read_text())
+    return recorded_meta("region-data")
 
 
 class FakeRawStore:

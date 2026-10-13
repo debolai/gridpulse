@@ -8,12 +8,12 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase A6b — AWS demo deployment: images for semantic API and agent, Terraform compute, `make aws-up` / `make aws-down`. (A5 eval passes on the temporary OpenAI provider, ADR-0003; final run on Bedrock waits on #11.)
+- Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange, (3) quality flags, (4) revision audit, (5) NOAA weather, (6) BA snapshot + ingestion-run facts. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. Commit this session's work on a branch (semantic image fix, aws-down check, OpenAI provider + guard + ADR-0003, gitleaks, 503 errors, README MVP section + GIF), open a PR, CI green
-2. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
-3. While waiting on #11: Phase B can start (B1 data coverage is independent of the LLM)
+1. B1 slice 2: interchange (`stg_eia__interchange_data`, `fct_interchange_hourly`, reconciliation of neighbour flows to TI, pair symmetry A→B = −(B→A))
+2. B1 slices 3–6 (quality flags, revision audit, NOAA weather, snapshot + ingestion runs)
+3. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
 - TODO #11 (AWS Support: Bedrock quota is 0 for every model family on this account) blocks the deployed assistant, the A6 smoke question, and the revert to the blueprint's Bedrock-only setup.
@@ -56,7 +56,14 @@ Repo: https://github.com/debolai/gridpulse
   - [ ] Closes with A5 and A6 (both wait on TODO #11 for their Bedrock runs)
 
 ## Phase B — Depth
-- [ ] B1 Data coverage (fuel, interchange, NOAA, flags, revisions, snapshots, reconciliation, Elementary)
+- [ ] **B1 Data coverage** — done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions from re-pulled windows
+  - [x] Slice 1: fuel mix — 2026-10-13. Routes `fuel-type-data` and `interchange-data` in the extractor (row models, recorded multi-page fixtures, 10 new tests). Seed `fuel_type_map` (16 codes), `stg_eia__fuel_type_data`, `int_generation__latest_values`, `dim_fuel_type`, `fct_generation_by_fuel_hourly` (contract). Evidence: `make extract-sample ROUTE=fuel-type-data START=2026-07-01 END=2026-10-13` twice → 125,744/125,744 rows each, 125,744 distinct hashes (rerun idempotent). `make dbt-build` PASS=57 on Trino and `make dbt-build-aws` PASS=57 on Athena; July per-BA rows, generation and fuel counts IDENTICAL. Reconciliation (fuels sum to NG within 1% or 1 MWh) per BA: ERCO/MISO/NYIS 100%, CISO 99.39%, ISNE 99.15%, PJM 98.87%; the test fails as expected at 0.1% tolerance (2 BAs).
+  - [ ] Slice 2: interchange
+  - [ ] Slice 3: quality flags
+  - [ ] Slice 4: revision audit (`int_grid__revisions`, `fct_data_revisions`)
+  - [ ] Slice 5: NOAA weather
+  - [ ] Slice 6: `snap_ba_reference`, `fct_ingestion_runs`
+  - [ ] Elementary (data observability)
 - [ ] B2 Orchestration on k3d (Airflow 3 Helm, KubernetesExecutor, Cosmos, 7 DAGs, pool, alerts) + full backfill on AWS
 - [ ] B3 Full semantic layer (12 metrics, saved queries, allow-list, cache)
 - [ ] B4 Full agent (clarify, inspect, checkpointer, 50-question golden set, nightly eval)
@@ -69,6 +76,9 @@ Repo: https://github.com/debolai/gridpulse
 
 ## Findings to fold into the build
 - 2026-10-12: The dbt manifest bakes in the target's catalog (`lake` vs `awsdatacatalog`). The semantic image parsed at build time with the default `local` target, so on EKS every query failed with `CATALOG_NOT_FOUND: Catalog 'lake'`. The entrypoint now re-parses for `DBT_TARGET`.
+- 2026-10-13: EIA fuel codes come with inconsistent names (PS = "Pumped storage"/"Pumped Storage", BAT = "Battery"/"Battery storage", UES and SNB likewise), so `fuel_type_map` is keyed on the code and EIA's label is not used downstream. Codes are validated by shape at ingestion; an unknown code warns in dbt instead of failing.
+- 2026-10-13: Fuel mix vs net generation: PJM's fuels run a steady ~0.4% (≈470 MWh/h) off its NG; CISO and ISNE have isolated hours off by up to 245% / 100% (partial fuel reports). Candidates for quality flags in slice 3.
+- 2026-10-13: Fuel-type data lags region-data: the latest fuel hour was 06:00 UTC when region-data had 20:00.
 - 2026-10-13: The UI showed time-series rows in arrival order when the planner omitted `order_by`; it now sorts by the time column (the chart already did).
 - 2026-10-13: Editing an OpenAI key's permissions after creation left about half of all calls failing with 401 `missing_scope` for 15+ minutes; a fresh key created with the right scope worked at once (12/12). Restricted keys need only Model capabilities = Write (`model.request`); listing models needs `api.model.read`, so `make openai-check` makes one tiny call per model instead.
 - 2026-10-13: gitleaks in a container fails open when it runs git itself (git errors, then "no leaks found", exit 0). The hook pipes `git diff --cached` into `gitleaks stdin` instead; verified it blocks a fake OpenAI key and passes clean changes. Full history is clean apart from the local stack's dummy SeaweedFS credentials (allowlisted in `.gitleaks.toml`).
@@ -105,3 +115,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — Temporary OpenAI provider (local only, ADR-0003) with a Kubernetes guard and `make openai-check`; gitleaks added to pre-commit and CI. Waiting on TODO #12 (key) for the live eval; revert to Bedrock when #11 lands.
 - 2026-10-13 — TODO #12 done (second key; the edited first key failed half its calls). A5 eval passes on OpenAI: 94% then 100%; live `/ask` answer matches the semantic API and Athena. Provisional until the Bedrock rerun (#11). Local stack stopped, caches cleaned.
 - 2026-10-13 — Agent API returns 503 with a clear reason for model/metrics outages (live-checked on throttled Bedrock). README MVP section, flow diagram, evidence table and Phase B list; demo GIF recorded with `make demo-gif`. Local stack stopped. Next: commit + PR.
+- 2026-10-13 — B1 started. Slice 1 (fuel mix) done on both engines: extractor routes for fuel-type and interchange, fuel seed, staging → latest values → `dim_fuel_type` + `fct_generation_by_fuel_hourly`, reconciliation test (≥ 98% per BA, all pass). Next: slice 2 (interchange).

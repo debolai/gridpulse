@@ -1,0 +1,411 @@
+{
+ "warnings": [
+  {
+   "warning": "incomplete return",
+   "description": "The API can only return 5000 rows in JSON format.  Please consider constraining your request with facet, start, or end, or using offset to paginate results."
+  }
+ ],
+ "response": {
+  "total": "192",
+  "dateFormat": "YYYY-MM-DD\"T\"HH24",
+  "frequency": "hourly",
+  "data": [
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "BAT",
+    "type-name": "Battery storage",
+    "value": "401",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "COL",
+    "type-name": "Coal",
+    "value": "8310",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NG",
+    "type-name": "Natural Gas",
+    "value": "33883",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NUC",
+    "type-name": "Nuclear",
+    "value": "4984",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "OTH",
+    "type-name": "Other",
+    "value": "61",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "SUN",
+    "type-name": "Solar",
+    "value": "1",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WAT",
+    "type-name": "Hydro",
+    "value": "10",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WND",
+    "type-name": "Wind",
+    "value": "15927",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "COL",
+    "type-name": "Coal",
+    "value": "14619",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "NG",
+    "type-name": "Natural Gas",
+    "value": "36307",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "NUC",
+    "type-name": "Nuclear",
+    "value": "28788",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "OIL",
+    "type-name": "Petroleum",
+    "value": "178",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "OTH",
+    "type-name": "Other",
+    "value": "2620",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "SUN",
+    "type-name": "Solar",
+    "value": "64",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "WAT",
+    "type-name": "Hydro",
+    "value": "421",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T05",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "WND",
+    "type-name": "Wind",
+    "value": "4557",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "BAT",
+    "type-name": "Battery storage",
+    "value": "-241",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "COL",
+    "type-name": "Coal",
+    "value": "7805",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NG",
+    "type-name": "Natural Gas",
+    "value": "32623",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NUC",
+    "type-name": "Nuclear",
+    "value": "4987",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "OTH",
+    "type-name": "Other",
+    "value": "52",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "SUN",
+    "type-name": "Solar",
+    "value": "1",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WAT",
+    "type-name": "Hydro",
+    "value": "1",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WND",
+    "type-name": "Wind",
+    "value": "16033",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "COL",
+    "type-name": "Coal",
+    "value": "13090",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "NG",
+    "type-name": "Natural Gas",
+    "value": "34837",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "NUC",
+    "type-name": "Nuclear",
+    "value": "28787",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "OIL",
+    "type-name": "Petroleum",
+    "value": "180",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "OTH",
+    "type-name": "Other",
+    "value": "2574",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "SUN",
+    "type-name": "Solar",
+    "value": "64",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "WAT",
+    "type-name": "Hydro",
+    "value": "373",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T06",
+    "respondent": "PJM",
+    "respondent-name": "PJM Interconnection, LLC",
+    "fueltype": "WND",
+    "type-name": "Wind",
+    "value": "4629",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "BAT",
+    "type-name": "Battery storage",
+    "value": "183",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "COL",
+    "type-name": "Coal",
+    "value": "7612",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NG",
+    "type-name": "Natural Gas",
+    "value": "32705",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "NUC",
+    "type-name": "Nuclear",
+    "value": "4988",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "OTH",
+    "type-name": "Other",
+    "value": "52",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "SUN",
+    "type-name": "Solar",
+    "value": "1",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WAT",
+    "type-name": "Hydro",
+    "value": "19",
+    "value-units": "megawatthours"
+   },
+   {
+    "period": "2026-10-01T07",
+    "respondent": "ERCO",
+    "respondent-name": "Electric Reliability Council of Texas, Inc.",
+    "fueltype": "WND",
+    "type-name": "Wind",
+    "value": "13644",
+    "value-units": "megawatthours"
+   }
+  ],
+  "description": "Hourly net generation by balancing authority and energy source.  \n    Source: Form EIA-930\n    Product: Hourly Electric Grid Monitor"
+ },
+ "request": {
+  "command": "/v2/electricity/rto/fuel-type-data/data/",
+  "params": {
+   "frequency": "hourly",
+   "data": [
+    "value"
+   ],
+   "start": "2026-10-01T00",
+   "end": "2026-10-01T11",
+   "sort": [
+    {
+     "column": "period",
+     "direction": "asc"
+    },
+    {
+     "column": "respondent",
+     "direction": "asc"
+    },
+    {
+     "column": "fueltype",
+     "direction": "asc"
+    }
+   ],
+   "facets": {
+    "respondent": [
+     "ERCO",
+     "PJM"
+    ]
+   },
+   "offset": "80",
+   "length": "40"
+  }
+ },
+ "apiVersion": "2.1.14",
+ "ExcelAddInVersion": "2.1.0"
+}

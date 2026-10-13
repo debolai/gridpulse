@@ -1,8 +1,8 @@
-"""EIA routes the platform extracts. Fuel-type and interchange join in phase B1."""
+"""EIA routes the platform extracts."""
 
 from dataclasses import dataclass
 
-from gridpulse_ingestion.eia.models import EIARow, RegionDataRow
+from gridpulse_ingestion.eia.models import EIARow, FuelTypeRow, InterchangeRow, RegionDataRow
 
 
 @dataclass(frozen=True)
@@ -29,4 +29,25 @@ REGION_DATA = Route(
     hash_fields=("period", "respondent", "type", "value", "value_units"),
 )
 
-ROUTES: dict[str, Route] = {r.name: r for r in (REGION_DATA,)}
+FUEL_TYPE_DATA = Route(
+    name="fuel-type-data",
+    path="electricity/rto/fuel-type-data/data/",
+    model=FuelTypeRow,
+    sort_columns=("period", "respondent", "fueltype"),
+    facet="respondent",
+    columns=("respondent", "respondent_name", "fueltype", "type_name", "value", "value_units"),
+    hash_fields=("period", "respondent", "fueltype", "value", "value_units"),
+)
+
+# Faceted by the exporting side: `--respondents PJM` loads PJM's flows to all its neighbours.
+INTERCHANGE_DATA = Route(
+    name="interchange-data",
+    path="electricity/rto/interchange-data/data/",
+    model=InterchangeRow,
+    sort_columns=("period", "fromba", "toba"),
+    facet="fromba",
+    columns=("fromba", "fromba_name", "toba", "toba_name", "value", "value_units"),
+    hash_fields=("period", "fromba", "toba", "value", "value_units"),
+)
+
+ROUTES: dict[str, Route] = {r.name: r for r in (REGION_DATA, FUEL_TYPE_DATA, INTERCHANGE_DATA)}

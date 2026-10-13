@@ -108,16 +108,17 @@ prune: ## Remove GridPulse containers, volumes and images, plus dangling build c
 
 # Local data is a sample (plan: ~6 BAs x ~3 months); the full history only runs on AWS.
 SAMPLE_BAS ?= CISO,ERCO,ISNE,MISO,NYIS,PJM
+ROUTE ?= region-data
 
 extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data --start 2026-10-01 --end 2026-10-08"
 	$(COMPOSE) run --rm --build extractor $(ARGS)
 
-extract-sample: ## Load region-data for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08
-	$(COMPOSE) run --rm --build extractor eia --route region-data \
+extract-sample: ## Load one route for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08 [ROUTE=fuel-type-data]
+	$(COMPOSE) run --rm --build extractor eia --route $(ROUTE) \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
 
 extract-sample-aws: ## Same as extract-sample, but into the AWS dev lake (S3 + Glue)
-	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route region-data \
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route $(ROUTE) \
 		--start $(START) --end $(END) --respondents $(SAMPLE_BAS)
 
 # --- dbt (transform/) ---------------------------------------------------------

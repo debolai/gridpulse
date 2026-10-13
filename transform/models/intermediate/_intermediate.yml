@@ -23,6 +23,24 @@ models:
         description: When this value was last observed (start of that load).
         data_tests: [not_null]
 
+  - name: int_generation__latest_values
+    description: >
+      Latest observed net generation per balancing authority, fuel and hour. Grain: BA ×
+      fuel × hour. Newest load wins, as in int_grid__latest_values.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, fuel_code, period_utc]
+    columns:
+      - name: ba_code
+        data_tests: [not_null]
+      - name: fuel_code
+        data_tests: [not_null]
+      - name: period_utc
+        data_tests: [not_null]
+      - name: ingested_at_utc
+        data_tests: [not_null]
+
 unit_tests:
   - name: latest_observation_wins_even_when_value_reverts
     description: >

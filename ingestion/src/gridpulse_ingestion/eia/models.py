@@ -56,3 +56,27 @@ class RegionDataRow(EIARow):
     respondent_name: str = Field(alias="respondent-name")
     type: Literal["D", "DF", "NG", "TI"]
     type_name: str = Field(alias="type-name")
+
+
+# EIA codes (BAs, fuels) are short upper-case tokens. New fuel codes appear over time (battery
+# and hybrid types arrived in 2024), so they are checked by shape, not against a fixed list; the
+# `fuel_type_map` seed maps them and a dbt test flags any code it does not know.
+EIA_CODE = r"^[A-Z0-9_]{1,10}$"
+
+
+class FuelTypeRow(EIARow):
+    """`electricity/rto/fuel-type-data`: net generation by fuel per BA."""
+
+    respondent: str = Field(pattern=EIA_CODE)
+    respondent_name: str = Field(alias="respondent-name")
+    fueltype: str = Field(pattern=EIA_CODE)
+    type_name: str = Field(alias="type-name")
+
+
+class InterchangeRow(EIARow):
+    """`electricity/rto/interchange-data`: flow from one BA to a neighbour (positive = export)."""
+
+    fromba: str = Field(pattern=EIA_CODE)
+    fromba_name: str = Field(alias="fromba-name")
+    toba: str = Field(pattern=EIA_CODE)
+    toba_name: str = Field(alias="toba-name")
