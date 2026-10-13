@@ -24,7 +24,8 @@ RUN useradd --create-home --uid 10001 gridpulse
 COPY --from=builder --chown=gridpulse:gridpulse /app/.venv /app/.venv
 COPY --chown=gridpulse:gridpulse agent/evals /app/agent/evals
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 HOST=0.0.0.0 PORT=8091 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+    GRIDPULSE_AGENT_GOLDEN_SET=/app/agent/evals/golden.yaml
 USER gridpulse
 WORKDIR /home/gridpulse
 EXPOSE 8091 8501

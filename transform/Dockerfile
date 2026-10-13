@@ -24,6 +24,8 @@ ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 \
     DBT_PROJECT_DIR=/app/transform DBT_PROFILES_DIR=/app/transform DBT_SEND_ANONYMOUS_USAGE_STATS=false
 USER gridpulse
 WORKDIR /app/transform
-RUN dbt deps --quiet
+# The parsed manifest is what Airflow's Cosmos renders the dbt_build DAG from (copied into the
+# Airflow image), so the task graph always matches the dbt code in this image.
+RUN dbt deps --quiet && dbt parse --quiet
 ENTRYPOINT ["dbt"]
 CMD ["build"]

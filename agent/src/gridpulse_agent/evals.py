@@ -8,6 +8,7 @@ semantic/ must keep the pass rate at or above 90%.
 """
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -21,7 +22,13 @@ from gridpulse_agent.contract import MetricRequest
 from gridpulse_agent.semantic_client import SemanticClient
 from gridpulse_agent.validate import validate
 
-GOLDEN = Path(__file__).resolve().parents[2] / "evals" / "golden.yaml"
+# From the source tree by default; the image installs the package into a venv and copies the
+# golden set elsewhere, so it points GRIDPULSE_AGENT_GOLDEN_SET at the copy.
+GOLDEN = Path(
+    os.environ.get(
+        "GRIDPULSE_AGENT_GOLDEN_SET", Path(__file__).resolve().parents[2] / "evals" / "golden.yaml"
+    )
+)
 PASS_RATE = 0.9
 
 

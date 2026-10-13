@@ -1,0 +1,15 @@
+respondent_code,respondent_name,level
+CAL,California,region
+CAR,Carolinas,region
+CENT,Central,region
+FLA,Florida,region
+MIDA,Mid-Atlantic,region
+MIDW,Midwest,region
+NE,New England,region
+NW,Northwest,region
+NY,New York,region
+SE,Southeast,region
+SW,Southwest,region
+TEN,Tennessee,region
+TEX,Texas,region
+US48,United States Lower 48,country

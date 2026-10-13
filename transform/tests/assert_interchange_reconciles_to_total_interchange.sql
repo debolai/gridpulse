@@ -4,6 +4,11 @@
 -- BAs listed for this check in seed `reconciliation_exceptions` (with the measured reason) are
 -- skipped. Returns one row per failing BA.
 
+-- Severity is a var (default warn, ADR-0006): across every BA for a year, source-side gaps
+-- (steady offsets, partial fuel or neighbour reports) make many BAs miss the pass rate, and a
+-- source anomaly must not block other BAs' data. The failing BAs are reported each build.
+{{ config(severity=var('reconciliation_severity', 'warn')) }}
+
 with flows as (
 
     select ba_code, period_utc, sum(interchange_mwh) as flows_total_mwh

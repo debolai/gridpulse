@@ -16,7 +16,7 @@ GridPulse turns hourly U.S. electricity grid data and weather into governed metr
 - Which regions are net importers at peak, and how has that changed?
 - How fresh and complete is the data right now?
 
-**Scope.** The project covers the Lower 48 balancing authorities from July 2018 (when EIA-930 hourly data starts in usable form) to the present, refreshed hourly. Out of scope: real-time trading signals, price data, and sub-hourly data.
+**Scope.** The project covers the Lower 48 balancing authorities over the last year (from 2025-10-01; ADR-0005) to the present, refreshed hourly. EIA-930 history goes back to July 2018 and can be added later with the same backfill command. Out of scope: real-time trading signals, price data, and sub-hourly data.
 
 **What it demonstrates.**
 
@@ -45,7 +45,7 @@ Three free sources feed the platform: EIA grid data (the core), NOAA weather (th
 | NOAA GHCNh (Global Historical Climatology Network hourly) on the AWS Open Data Registry (replaced ISD, ADR-0004) | Hourly temperature, dew point, wind at airport stations | Public S3 bucket `noaa-ghcnh-pds`, no key | Daily, about 1.5 days behind | Filtered to \~150 stations |
 | Reference seeds (built in repo) | BA codes, names, time zones, interconnection; BA-to-weather-station mapping with population weights | dbt seeds (CSV) | Manual, versioned in Git | < 1,000 rows |
 
-**Decision: start the history at July 2018.** Why: demand data goes back to 2015, but generation by fuel type begins in July 2018. A common start date keeps every metric comparable and avoids half-empty dashboards.
+**Decision (revised 2026-10-13, ADR-0005): load one year of history, from 2025-10-01.** Why: the app needs no more to answer its questions, and one year loads in under an hour instead of several, without first rewriting the full-rebuild models. A common start date still keeps every metric comparable. The original start, July 2018 (when generation by fuel type begins), stays available as an optional extension.
 
 **Decision: use NOAA from the AWS Open Data Registry rather than a weather API.** Why: it sits in AWS already, so reads are fast and free of rate limits, it is public domain, and it shows you can work with a large partitioned public dataset. Open-Meteo is the fallback if station coverage is thin.
 
@@ -60,6 +60,7 @@ Three free sources feed the platform: EIA grid data (the core), NOAA weather (th
 - **Gaps, zeros, and spikes.** Some BAs report missing hours, zero demand, or implausible spikes. These are flagged, not silently dropped.
 - **Sign conventions.** Interchange is positive for exports and negative for imports, which must be documented in the semantic layer so the LLM does not invert it.
 - **API throttling.** EIA temporarily suspends keys that exceed request limits, so the extractor rate-limits itself and retries with backoff.
+- **Aggregate respondents.** Without a BA filter the API also returns EIA's 13 regional sums and US48 as if they were respondents. Pooled with BAs they count every MWh about three times, so staging drops them (seed `eia_aggregate_respondents`); raw keeps them.
 
 **Licensing.** EIA data is free and governed by EIA's [copyright and reuse policy](https://www.eia.gov/about/copyrights_reuse.php) and [API terms of service](https://www.eia.gov/opendata/terms-of-service.php); NOAA data is public domain. Credit both in the README.
 
@@ -214,7 +215,7 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 
 **Decision: SCD Type 2 snapshot on BA reference data.** Why: balancing authorities occasionally retire, merge, or change names. A snapshot lets historical facts join to the attributes that were true at the time.
 
-**Decision (2026-10-13): reconciliation checks with a pass rate and documented exceptions.** Why: two EIA routes measure the same thing (fuel mix vs net generation, neighbour flows vs total interchange), so their agreement is a strong data-quality signal, but a few hours legitimately miss. Each check passes per BA when at least 98% of its hours agree within 1% (or 1 MWh); both numbers are dbt vars. A BA whose source data fails a check for a known reason (PJM's interchange) is listed in seed `reconciliation_exceptions` with the measured reason, instead of loosening the tolerance for everyone. Pair symmetry (A→B = −(B→A)) is not tested: neighbours meter and report differently.
+**Decision (2026-10-13, severity revised by ADR-0006): reconciliation checks with a pass rate and documented exceptions, reported as warnings.** Why: two EIA routes measure the same thing (fuel mix vs net generation, neighbour flows vs total interchange), so their agreement is a strong data-quality signal, but a few hours legitimately miss. Each check passes per BA when at least 98% of its hours agree within 1% (or 1 MWh); both numbers are dbt vars. A BA whose source data fails a check for a known reason (PJM's interchange) is listed in seed `reconciliation_exceptions` with the measured reason, instead of loosening the tolerance for everyone. Pair symmetry (A→B = −(B→A)) is not tested: neighbours meter and report differently. Across every BA for a year, 9 of 63 BAs miss the fuel-mix pass rate and 21 the interchange one for source-side reasons, so both checks warn by default (var `reconciliation_severity`) instead of failing the build.
 
 **Decision: flag bad values instead of deleting them.** Why: deleting spikes hides problems from consumers and breaks totals silently. `int_grid__quality_flags` carries `is_missing`, `is_zero`, `is_negative`, `is_spike` per BA, series and hour, and `fct_grid_hourly` carries a `quality_status` per series (ok, suspect, invalid, missing; revised 2026-10-13: one status per series, because a single row-level status would mix a missing forecast with invalid demand). A spike is a one-hour outlier against both adjacent hours (threshold a dbt var). Metrics in the semantic layer exclude flagged rows by default and say so.
 
@@ -311,7 +312,7 @@ Airflow 3 runs seven DAGs on Kubernetes; ingestion DAGs publish Airflow Assets, 
 | `noaa_daily` | Daily 06:00 UTC | Loads the previous day's weather observations; publishes `raw_noaa` |
 | `dbt_build` | On `raw_eia` or `raw_noaa` update | Source freshness check, `dbt build` through Cosmos, semantic API cache refresh, Elementary report |
 | `lake_maintenance` | Weekly, Sunday | Iceberg `OPTIMIZE` and `VACUUM` on raw and mart tables |
-| `dbt_full_refresh_check` | Monthly | Rebuilds marts in a scratch database and compares them to production to prove incremental logic is correct |
+| `dbt_full_refresh_check` | Monthly | Rebuilds marts in a scratch database and compares them to production to prove incremental logic is correct (rows older than the 30-day revision window + 2 days, which ingestion can no longer change) |
 | `agent_eval_nightly` | Daily 07:00 UTC | Runs the full agent evaluation against the live semantic API and stores scores |
 
 **Decision: anchor every extraction window to the run's data interval, not to "now."** Why: a run for 10:00 always pulls the same 72 hours whether it runs on time or a month later. That makes reruns reproducible and lets Airflow's built-in backfill rebuild any historical range correctly.
@@ -324,7 +325,7 @@ Airflow 3 runs seven DAGs on Kubernetes; ingestion DAGs publish Airflow Assets, 
 
 **Decision: Cosmos renders each dbt model as an Airflow task.** Why: a failed model retries alone instead of rerunning the whole project, and the Airflow graph shows dbt lineage, which helps when debugging at 3 a.m.
 
-**Decision: freshness enforced by checks and alerts, not Airflow SLAs.** Why: Airflow 3 dropped the legacy SLA feature. dbt source freshness (warn after 2 hours, error after 6 hours on `_ingested_at`) and a freshness check on the latest `period_utc` in `fct_grid_hourly` fail loudly, and failure callbacks send an alert to a Slack webhook or email.
+**Decision: freshness enforced by checks and alerts, not Airflow SLAs.** Why: Airflow 3 dropped the legacy SLA feature. dbt source freshness (warn after 2 hours, error after 6 hours on `_ingested_at`) and a freshness check on the latest `period_utc` in `fct_grid_hourly` fail loudly, and a failure callback on every task posts to a Slack incoming webhook once its retries are spent (logged only when no webhook is configured).
 
 **Decision: DAGs baked into the Airflow image in production, mounted from disk locally.** Why: an image tag pins exactly which DAG code ran, which makes deployments auditable and rollbacks one command. Local development mounts the folder for fast iteration.
 
@@ -456,8 +457,8 @@ The build runs in nine phases, each a vertical slice with a checkable "done when
    - Fuel-type and interchange extractors, NOAA weather, quality flags, revision audit, snapshots, reconciliation tests.
    - Done when: all marts build, reconciliation tests pass on at least 98% of BA-hours, and `fct_data_revisions` shows real revisions from re-pulled windows.
 4. **Orchestration on `k3d`** (about 1–2 weeks)
-   - Airflow 3 via Helm, all DAGs, Cosmos, the `eia_api` pool, alerts, and the historical backfill from July 2018.
-   - Done when: the backfill completes (roughly 15,000 API calls, about 4–5 hours at one request per second, approximate) and freshness stays under 2 hours for 7 straight days.
+   - Airflow 3 via Helm, all DAGs, Cosmos, the `eia_api` pool, alerts, and a one-year historical backfill (ADR-0005).
+   - Done when: the one-year backfill completes (about 1,700 API calls, roughly an hour at EIA's 3–4 s per page) and all DAGs run green on `k3d`; freshness is enforced by checks and alerts rather than a 7-day soak (ADR-0007).
 5. **dbt Semantic Layer** (about 1–2 weeks)
    - Day 1 spike: compile and run a sum, a ratio, and a cumulative metric with MetricFlow on Athena; if it fails, add Trino on `k3d` reading the same Iceberg tables. Then: time spine, semantic models, all metrics and saved queries in dbt YAML, the semantic API service, caching, and SQL ground-truth tests.
    - Done when: `mf validate-configs` passes in CI, every metric matches its reference SQL on a fixed date, and `mf query` and the API return the same numbers.
@@ -547,3 +548,9 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — Revision audit covers all three EIA routes (item = series, fuel or neighbour BA), with revision_type changed/filled/removed and hours_after_period.
 - 2026-10-13 — Weather source: NOAA GHCNh replaces ISD (ISD stopped updating in August 2025; ADR-0004). Seed `ba_weather_stations` covers the six sample BAs with Census Vintage 2025 metro populations; temperature joins `fct_grid_hourly` and fills in on a later run when NOAA publishes.
 - 2026-10-13 — `dim_balancing_authority` is built from `snap_ba_reference` (SCD2). Run manifests are also appended to `raw.ingestion_runs` (best effort; `gridpulse-extract manifests` backfills from S3) so dbt can build `fct_ingestion_runs` without reading JSON from S3.
+- 2026-10-13 — B2 slice 1: all seven DAGs share one task factory; `GRIDPULSE_TASK_RUNTIME` picks DockerOperator (compose) or KubernetesPodOperator (k3d, EKS), and Kubernetes task env comes from per-component ConfigMaps/Secrets rather than DAG code. Cosmos renders `dbt_build` from the manifest baked into the Airflow image (one `dbt build --select <node>` task per node, unit tests left to CI). Lake maintenance and the full-refresh comparison are dbt macros (`adapter.dispatch` for Trino vs Athena). Assets renamed `raw_eia`/`raw_noaa`. Elementary moved to B6.
+- 2026-10-13 — B2 slice 2: Airflow on k3d uses the official chart 1.22.0 (Airflow 3.3.2 image) with KubernetesExecutor, Airflow 3's simple auth manager, and remote task logs in object storage (SeaweedFS locally, S3 on AWS). Metadata lives in the shared Postgres (compose locally, RDS on AWS). DAGs are baked into the image on k3d as on EKS; the compose Airflow keeps mounting them for quick iteration.
+- 2026-10-13 — B2 slice 3: alerts are a Slack incoming webhook only (no email); the mart freshness check is a dbt singular test on the latest demand hour in `fct_grid_hourly` (6 h), `warn` in dev builds and `error` in the scheduled `dbt_build`.
+- 2026-10-13 — History window cut to one year (from 2025-10-01), loaded once with `make backfill-aws` from the laptop (ADR-0005); July 2018 becomes an optional extension.
+- 2026-10-13 — One-year backfill done (63 BAs, 2025-10-01..2026-10-12). Staging now drops EIA's regional and US48 aggregate respondents (seed `eia_aggregate_respondents`). Reconciliation tests warn by default at full scale (ADR-0006).
+- 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).

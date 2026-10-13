@@ -4,14 +4,14 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws dag-check images \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws backfill-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
-	aws-plan aws-up aws-down aws-status aws-ui \
+	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
 	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
 
 help: ## List available commands
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 setup: ## Install pinned dev tools and git hooks
 	uv sync --locked
@@ -73,13 +73,74 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 
 up: up-orch ## Start everything built so far
 
-images: ## Build the local task images Airflow launches (extractor, dbt)
+images: ## Build the local images: the tasks Airflow launches (extractor, dbt, agent) and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
 	docker build -q -f transform/Dockerfile -t gridpulse/transform:local . >/dev/null
-	@echo "built gridpulse/ingestion:local gridpulse/transform:local"
+	docker build -q -f agent/Dockerfile -t gridpulse/agent:local . >/dev/null
+	docker build -q -f orchestration/Dockerfile -t gridpulse/orchestration:local . >/dev/null
+	@echo "built gridpulse/{ingestion,transform,agent,orchestration}:local"
 
-dag-check: ## DAG integrity: imports, no catchup, retries, timeouts, EIA pool
-	$(COMPOSE) --profile orch run --rm --no-deps --entrypoint python airflow /opt/airflow/tests/dag_integrity.py
+dag-check: ## DAG integrity on both runtimes: imports, no catchup, retries, timeouts, EIA pool
+	@for rt in docker kubernetes; do \
+	  $(COMPOSE) --profile orch run --rm --no-deps -e GRIDPULSE_TASK_RUNTIME=$$rt \
+	    --entrypoint python airflow /opt/airflow/tests/dag_integrity.py || exit 1; \
+	done
+
+# --- Airflow on k3d (phase B2): the Helm deployment EKS uses, against the compose lake ------
+K3D_CTX := k3d-gridpulse
+KUBECTL := kubectl --context $(K3D_CTX)
+HELM := helm --kube-context $(K3D_CTX)
+AIRFLOW_CHART_VERSION := 1.22.0
+K3D_IMAGES := gridpulse/orchestration:local gridpulse/ingestion:local gridpulse/transform:local gridpulse/agent:local
+
+k3d-up: up-lake images ## Start the lake plus Airflow on k3d (Helm, KubernetesExecutor), ~8 GB
+	@$(COMPOSE) stop airflow >/dev/null 2>&1 || true  # one scheduler at a time
+	@k3d cluster list gridpulse >/dev/null 2>&1 || k3d cluster create --config local/k3d/cluster.yaml
+	k3d image import --cluster gridpulse $(K3D_IMAGES)
+	@$(KUBECTL) create namespace airflow --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	$(KUBECTL) apply -f infra/helm/airflow/tasks-k3d.yaml
+	@$(MAKE) --no-print-directory k3d-secrets
+	@helm repo add apache-airflow https://airflow.apache.org >/dev/null 2>&1; helm repo update apache-airflow >/dev/null
+	$(HELM) upgrade --install airflow apache-airflow/airflow --version $(AIRFLOW_CHART_VERSION) \
+	  --namespace airflow -f infra/helm/airflow/values.yaml -f infra/helm/airflow/values-k3d.yaml \
+	  --wait --timeout 10m
+	@# Re-imported images keep their tag, so restart to pick them up (a no-op on first install).
+	$(KUBECTL) -n airflow rollout restart deployment >/dev/null
+	$(KUBECTL) -n airflow rollout status deployment --timeout 5m >/dev/null
+	$(KUBECTL) -n airflow exec deploy/airflow-scheduler -c scheduler -- \
+	  airflow pools set eia_api 2 "EIA API: at most 2 concurrent extract tasks" >/dev/null
+	@# The agent uses Bedrock inside Kubernetes and k3d has no AWS credentials (EKS uses Pod
+	@# Identity), so its nightly eval stays paused here; `make up-orch` runs it on Docker.
+	@$(KUBECTL) -n airflow exec deploy/airflow-scheduler -c scheduler -- \
+	  airflow dags pause agent_eval_nightly >/dev/null 2>&1 || true
+	@echo "Airflow on k3d is up. UI: make k3d-ui (http://localhost:8089)"
+
+k3d-secrets: ## Copy the EIA key and the alert webhook from .env into Secrets (never printed)
+	@set -a; . ./.env; set +a; \
+	  $(KUBECTL) -n airflow create secret generic gridpulse-extractor \
+	    --from-literal=EIA_API_KEY="$$EIA_API_KEY" --dry-run=client -o yaml \
+	  | $(KUBECTL) apply -f - >/dev/null && echo "secret gridpulse-extractor updated"; \
+	  if [ -n "$${SLACK_WEBHOOK_URL:-}" ]; then \
+	    $(KUBECTL) -n airflow create secret generic gridpulse-alerts \
+	      --from-literal=SLACK_WEBHOOK_URL="$$SLACK_WEBHOOK_URL" \
+	      --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null \
+	    && echo "secret gridpulse-alerts updated"; \
+	  else echo "no SLACK_WEBHOOK_URL in .env: failures are only logged"; fi
+
+alert-test: ## Send a test alert to SLACK_WEBHOOK_URL from .env (TODO #8)
+	@set -a; . ./.env; set +a; [ -n "$${SLACK_WEBHOOK_URL:-}" ] || { echo "SLACK_WEBHOOK_URL is not set in .env"; exit 1; }; \
+	  curl -sf -X POST -H 'Content-Type: application/json' \
+	    -d '{"text": "GridPulse: test alert from make alert-test"}' "$$SLACK_WEBHOOK_URL" >/dev/null \
+	  && echo "test alert sent: check the channel" || { echo "webhook rejected the message"; exit 1; }
+
+k3d-ui: ## Open the k3d Airflow UI through a port-forward: http://localhost:8089
+	$(KUBECTL) -n airflow port-forward svc/airflow-api-server 8089:8080
+
+k3d-status: ## Pods and their memory on the k3d cluster
+	@$(KUBECTL) -n airflow get pods -o wide 2>/dev/null || echo "k3d cluster gridpulse is not running"
+
+k3d-down: ## Delete the k3d cluster (Airflow metadata stays in the compose Postgres)
+	k3d cluster delete gridpulse
 
 down: ## Stop all containers, keep data
 	$(COMPOSE) --profile '*' down
@@ -126,6 +187,9 @@ extract-weather: ## Load NOAA GHCNh weather for the seed's stations: make extrac
 extract-weather-aws: ## Same as extract-weather, but into the AWS dev lake
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh noaa --stations $(WEATHER_STATIONS) \
 		--start $(START) --end $(END)
+
+backfill-aws: ## One-time history load, all BAs, monthly chunks: make backfill-aws START=2025-10-01 END=2026-10-13
+	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/backfill-aws.sh $(START) $(END)
 
 extract-sample-aws: ## Same as extract-sample, but into the AWS dev lake (S3 + Glue)
 	AWS_PROFILE=$(AWS_PROFILE) infra/scripts/extract-aws.sh eia --route $(ROUTE) \

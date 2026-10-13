@@ -1,0 +1,23 @@
+# Local Kubernetes for Airflow (phase B2): one k3s node joined to the compose network, so task
+# pods reach the lake (SeaweedFS, Lakekeeper, Trino) and Postgres by their compose names, as
+# pods on EKS reach S3, Glue and Athena. Create with `make k3d-up`; delete with `make k3d-down`.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: gridpulse
+servers: 1
+agents: 0
+image: rancher/k3s:v1.36.4-k3s1@sha256:edad48e12bf81c3a09ac1c05c0c0ffaaa22145980b989d6fae84543a76b83657
+network: gridpulse_default
+options:
+  k3d:
+    wait: true
+    disableLoadbalancer: true
+  k3s:
+    extraArgs:
+      # No ingress controller or metrics server needed locally: the UI is a port-forward.
+      - arg: --disable=traefik,metrics-server
+        nodeFilters: [server:*]
+  runtime:
+    # The whole cluster (control plane + Airflow + task pods) stays inside this budget.
+    serversMemory: 8g

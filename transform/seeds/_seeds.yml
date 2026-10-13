@@ -26,6 +26,25 @@ seeds:
       - name: observed_on
         data_tests: [not_null]
 
+  - name: eia_aggregate_respondents
+    description: >
+      EIA-930 respondent codes that are sums, not balancing authorities: the 13 EIA regions
+      and US48 (Lower 48). Without a BA facet the API returns them alongside the BAs (found in
+      the 2026-10-13 all-BA backfill), and pooling them with BAs counts each MWh about three
+      times. Staging excludes them; raw keeps them for a future regional mart. A new EIA
+      region must be added here, or it shows up as an unknown BA (relationships tests fail).
+    columns:
+      - name: respondent_code
+        data_tests:
+          - unique
+          - not_null
+          # An aggregate code must never hide a real BA.
+      - name: level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["region", "country"]
+
   - name: ba_weather_stations
     description: >
       Weather stations that stand for each balancing authority's load: the 3-4 largest metro

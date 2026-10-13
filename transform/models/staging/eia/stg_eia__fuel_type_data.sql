@@ -5,6 +5,8 @@
 with source as (
 
     select * from {{ source('eia_raw', 'eia_fuel_type_data') }}
+    -- EIA's regional and US48 sums are not balancing authorities; they stay in raw only.
+    where respondent not in (select respondent_code from {{ ref('eia_aggregate_respondents') }})
 
 ),
 
