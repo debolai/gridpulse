@@ -458,7 +458,7 @@ The build runs in nine phases, each a vertical slice with a checkable "done when
    - Done when: all marts build, reconciliation tests pass on at least 98% of BA-hours, and `fct_data_revisions` shows real revisions from re-pulled windows.
 4. **Orchestration on `k3d`** (about 1–2 weeks)
    - Airflow 3 via Helm, all DAGs, Cosmos, the `eia_api` pool, alerts, and a one-year historical backfill (ADR-0005).
-   - Done when: the one-year backfill completes (about 1,700 API calls, roughly an hour at EIA's 3–4 s per page) and freshness stays under 2 hours for 7 straight days.
+   - Done when: the one-year backfill completes (about 1,700 API calls, roughly an hour at EIA's 3–4 s per page) and all DAGs run green on `k3d`; freshness is enforced by checks and alerts rather than a 7-day soak (ADR-0007).
 5. **dbt Semantic Layer** (about 1–2 weeks)
    - Day 1 spike: compile and run a sum, a ratio, and a cumulative metric with MetricFlow on Athena; if it fails, add Trino on `k3d` reading the same Iceberg tables. Then: time spine, semantic models, all metrics and saved queries in dbt YAML, the semantic API service, caching, and SQL ground-truth tests.
    - Done when: `mf validate-configs` passes in CI, every metric matches its reference SQL on a fixed date, and `mf query` and the API return the same numbers.
@@ -553,3 +553,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — B2 slice 3: alerts are a Slack incoming webhook only (no email); the mart freshness check is a dbt singular test on the latest demand hour in `fct_grid_hourly` (6 h), `warn` in dev builds and `error` in the scheduled `dbt_build`.
 - 2026-10-13 — History window cut to one year (from 2025-10-01), loaded once with `make backfill-aws` from the laptop (ADR-0005); July 2018 becomes an optional extension.
 - 2026-10-13 — One-year backfill done (63 BAs, 2025-10-01..2026-10-12). Staging now drops EIA's regional and US48 aggregate respondents (seed `eia_aggregate_respondents`). Reconciliation tests warn by default at full scale (ADR-0006).
+- 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).

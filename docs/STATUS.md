@@ -11,7 +11,7 @@ Repo: https://github.com/debolai/gridpulse
 - Phase B2 done on `feat/b2-orchestration` (seven DAGs, Airflow on k3d, alerts and freshness, one-year backfill); awaiting the PR. Next: B3, the full semantic layer. (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. B2 PR (owner's go-ahead), then B3 full semantic layer (renewable share, generation by fuel, net imports, coincident peak, cooling degree hours, revision rate; saved queries; metrics exclude flagged and unreconciled hours by default)
+1. B2 PR open (owner approved 2026-10-13); merge once CI is green. The 7-day freshness soak is dropped (ADR-0007). Then B3 full semantic layer (renewable share, generation by fuel, net imports, coincident peak, cooling degree hours, revision rate; saved queries; metrics exclude flagged and unreconciled hours by default)
 2. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
@@ -155,3 +155,5 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — B2 slice 3 done: Slack failure alerts on every task (tested against a local receiver) and a `fct_grid_hourly` freshness test (error in the DAG, warn in dev). TODO #8 updated (`SLACK_WEBHOOK_URL`, `make alert-test`). Next: slice 4 (full backfill on AWS), plan first.
 - 2026-10-13 — Paused before slice 4 (needs the owner's call on approach and AWS cost). Branch `feat/b2-orchestration` has 3 local commits, not pushed. Everything stopped: k3d cluster deleted, compose stack down, no local processes; nothing was started on AWS.
 - 2026-10-13 — B2 slice 4 done: one year for every BA in the AWS lake (ADR-0005); aggregate respondents dropped in staging; reconciliation warns at full scale (ADR-0006). Tutorial written (local `tutorial/`, incl. 09b IaC). Next: B2 PR, then B3.
+- 2026-10-13 — Tutorial restructured to ship-as-you-go (local `tutorial/`, git-excluded): repo + CI + branch protection in chapter 01, a "Ship it" PR + CI step per chapter, 10b as capstone. Session paused; nothing running locally or on AWS (foundation only).
+- 2026-10-13 — Owner dropped the B2 7-day freshness soak (ADR-0007, blueprint updated) and approved the B2 PR; branch pushed and PR opened.
