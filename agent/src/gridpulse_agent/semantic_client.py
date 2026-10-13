@@ -38,6 +38,16 @@ class SemanticClient:
 
         return self._cached("catalog", load)
 
+    def saved_queries(self) -> list[dict]:
+        """Common questions as request templates (tagged agent), for the planner to start from."""
+
+        def load():
+            resp = self._http.get("/saved-queries", params={"agent_only": True})
+            resp.raise_for_status()
+            return resp.json()
+
+        return self._cached("saved", load)
+
     def balancing_authorities(self) -> list[tuple[str, str]]:
         """(code, name) for every BA with data, so the planner can map names to codes."""
 

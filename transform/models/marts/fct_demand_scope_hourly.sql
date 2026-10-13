@@ -2,9 +2,9 @@
 -- each EIA region, and the Lower 48. Grain: scope x UTC hour. The basis for
 -- coincident_peak_demand (the highest combined hour), which MetricFlow can't compute from
 -- BA-hours: it would need a sum per hour followed by a max over hours.
--- Every expected hour is kept. A BA that didn't report only lowers that hour's sum, so
--- bas_reported / bas_expected say how complete each hour is; flagged values are counted, not
--- dropped (the metric layer decides what to exclude).
+-- Every expected hour is kept. A BA that didn't report, or whose value is flagged (spike,
+-- zero), is left out of that hour's sum like every other metric's default; bas_reported,
+-- bas_flagged and is_complete say how complete each hour is.
 
 with ba_hours as (
 
@@ -44,10 +44,10 @@ select
     cast(scope_type || ':' || scope_code as varchar) as scope_id,
     cast(scope_code as varchar) as scope_code,
     cast(period_utc as {{ timestamp_type() }}) as period_utc,
-    sum(demand_mwh) as demand_mwh,
+    sum(case when not is_flagged then demand_mwh end) as demand_mwh,
     cast(count(*) as integer) as bas_expected,
     cast(count_if(is_demand_reported) as integer) as bas_reported,
     cast(count_if(is_flagged) as integer) as bas_flagged,
-    count_if(is_demand_reported) = count(*) as is_complete
+    count_if(is_demand_reported and not is_flagged) = count(*) as is_complete
 from scoped
 group by scope_type, scope_code, period_utc

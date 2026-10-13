@@ -1,0 +1,68 @@
+[
+ {
+  "name": "daily_demand_by_ba",
+  "label": "Daily demand and peak by BA",
+  "description": "Each balancing authority's demand (MWh) and peak hour (MW) per day. For \"how did load change\", daily load curves, and comparing BAs over a period.",
+  "agent": true,
+  "metrics": [
+   "demand",
+   "peak_demand"
+  ],
+  "group_by": [
+   "balancing_authority",
+   "metric_time__day"
+  ]
+ },
+ {
+  "name": "data_quality_by_ba",
+  "label": "Data quality by BA",
+  "description": "Share of expected hours with valid demand, and how many values were flagged (spikes, zeros) and left out, per balancing authority. For \"how reliable is X's data\".",
+  "agent": true,
+  "metrics": [
+   "data_completeness",
+   "flagged_values"
+  ],
+  "group_by": [
+   "balancing_authority"
+  ]
+ },
+ {
+  "name": "forecast_accuracy_by_ba",
+  "label": "Forecast accuracy by BA",
+  "description": "Day-ahead forecast error (MAPE, %) and bias (MWh) per balancing authority. For \"which BA forecasts best/worst\"; add order_by on forecast_error_mape.",
+  "agent": true,
+  "metrics": [
+   "forecast_error_mape",
+   "forecast_bias"
+  ],
+  "group_by": [
+   "balancing_authority"
+  ]
+ },
+ {
+  "name": "fuel_mix_by_ba",
+  "label": "Generation mix by BA",
+  "description": "Generation (MWh) per balancing authority and fuel category (renewable, fossil, nuclear, ...). For \"what powers X\" and fuel-mix comparisons.",
+  "agent": true,
+  "metrics": [
+   "generation_by_fuel"
+  ],
+  "group_by": [
+   "balancing_authority",
+   "fuel_type__fuel_category"
+  ]
+ },
+ {
+  "name": "monthly_system_peaks",
+  "label": "Monthly system peaks",
+  "description": "Coincident (combined) peak demand per month for each interconnection, EIA region and the Lower 48. Filter demand_scope__scope_code to one scope, e.g. US48.",
+  "agent": true,
+  "metrics": [
+   "coincident_peak_demand"
+  ],
+  "group_by": [
+   "demand_scope__scope_code",
+   "metric_time__month"
+  ]
+ }
+]

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -16,6 +17,19 @@ from metricflow.engine.metricflow_engine import MetricFlowQueryRequest
 
 from gridpulse_semantic.requests import MetricRequest, render_where
 
+# A saved query's group-by as MetricFlow stores it, e.g. "Entity('balancing_authority')" or
+# "TimeDimension('metric_time', 'day')".
+_GROUP_BY = re.compile(r"^(Entity|Dimension|TimeDimension)\('([a-z0-9_]+)'(?:,\s*'([a-z]+)')?\)$")
+
+
+def group_by_name(spec: str) -> str:
+    """The request-contract name for a saved query's group-by (metric_time__day, ...)."""
+    match = _GROUP_BY.match(spec.strip())
+    if not match:
+        raise ValueError(f"unsupported saved-query group_by {spec!r}")
+    _, name, grain = match.groups()
+    return f"{name}__{grain}" if grain else name
+
 
 @dataclass
 class QueryResult:
@@ -25,6 +39,7 @@ class QueryResult:
     cached: bool
     duration_ms: int
     data_version: str
+    notes: list[str] = field(default_factory=list)
 
 
 def _json_cell(value):
@@ -75,6 +90,7 @@ class SemanticEngine:
             link.element_name for m in metrics for d in m.dimensions for link in d.entity_links
         }
         self._catalog = [self._describe(m) for m in metrics]
+        self._saved = [self._describe_saved(q) for q in self._mf.list_saved_queries()]
 
     @staticmethod
     def _describe(metric) -> dict:
@@ -88,11 +104,37 @@ class SemanticEngine:
             "unit": meta.get("unit"),
             "additive": meta.get("additive"),
             "synonyms": meta.get("synonyms", []),
+            # What the metric leaves out by default (flagged values); returned with every result.
+            "quality": " ".join((meta.get("quality") or "").split()) or None,
             "dimensions": sorted({d.dunder_name for d in metric.dimensions}),
         }
 
+    @staticmethod
+    def _describe_saved(query) -> dict:
+        """A saved query as a request template: the caller adds the window and filters."""
+        params = query.query_params
+        if params.where or params.order_by:
+            raise ValueError(f"saved query {query.name}: only metrics and group_by are supported")
+        return {
+            "name": query.name,
+            "label": query.label,
+            "description": (query.description or "").strip(),
+            "agent": "agent" in (query.tags or []),
+            "metrics": list(params.metrics),
+            "group_by": [group_by_name(g) for g in params.group_by],
+        }
+
+    def saved_queries(self, agent_only: bool = False) -> list[dict]:
+        return [q for q in self._saved if q["agent"] or not agent_only]
+
     def catalog(self, agent_only: bool = False) -> list[dict]:
         return [m for m in self._catalog if m["agent"] or not agent_only]
+
+    def notes(self, metric_names: list[str]) -> list[str]:
+        """The quality notes of the requested metrics, each once, in request order."""
+        by_name = {m["name"]: m for m in self._catalog}
+        notes = [by_name[n]["quality"] for n in metric_names if by_name.get(n, {}).get("quality")]
+        return list(dict.fromkeys(notes))
 
     def refresh(self) -> str:
         """Called by the pipeline after each dbt build: drop cached results, new data version."""
@@ -141,6 +183,7 @@ class SemanticEngine:
             cached=False,
             duration_ms=int((time.monotonic() - started) * 1000),
             data_version=version,
+            notes=self.notes(req.metrics),
         )
         self._cache.put(key, result)
         return result

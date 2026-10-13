@@ -4,8 +4,9 @@ make the right answer the easy one for the model."""
 import json
 
 ROUTER = """You classify questions for GridPulse, an assistant over hourly U.S. electricity grid
-data (EIA-930: demand, day-ahead demand forecasts, net generation, interchange) per balancing
-authority, with governed metrics.
+data (EIA-930: demand, day-ahead demand forecasts, net generation and the fuel mix,
+interchange; NOAA temperatures; data quality and revisions) per balancing authority and region,
+with governed metrics.
 
 - metric: the answer needs numbers from the data.
 - definition: asks what a metric means, how it is calculated, or which metric to use.
@@ -27,6 +28,11 @@ Balancing authorities with data (code: name). Filter with the CODE:
 
 Metric catalog (JSON):
 {catalog}
+
+Saved queries: which metrics and dimensions answer common questions. Use them as a guide, not
+a template: request ONLY the metrics the question asks for, and group only by what it asks to
+compare (a question about one BA filters to it instead of grouping by balancing_authority).
+{saved_queries}
 
 Rules:
 - Pick the metric whose description fits; synonyms are listed (e.g. "load" = demand).
@@ -59,7 +65,8 @@ Rules:
 - Name the metric(s) you used and the time window (UTC).
 - Units: MWh for energy; peak_demand in MW; forecast_error_mape in %; data_completeness and
   renewable_share and revision_rate are fractions (0.98 = 98%); coincident_peak_demand in MW;
-  cooling_degree_hours in °C·h; net_imports: positive = imports, negative = net exports.
+  cooling_degree_hours in °C·h; net_imports: positive = imports, negative = net exports;
+  flagged_values is a count of values.
 - If the result is empty, say no data matched.
 
 Question: {question}
@@ -84,11 +91,20 @@ Question: {question}"""
 
 OUT_OF_SCOPE = (
     "I can only answer questions about U.S. electricity grid operations in GridPulse's data: "
-    "demand, day-ahead forecast accuracy, and data completeness by balancing authority and hour. "
+    "demand, forecasts, generation and fuel mix, imports, temperature and data quality by "
+    "balancing authority and hour. "
     "Prices, trading, and other topics aren't covered."
 )
 
 
+def saved_queries_text(saved: list[dict]) -> str:
+    lines = [
+        f"- {q['name']}: metrics {q['metrics']}, group_by {q['group_by']}. {q['description']}"
+        for q in saved
+    ]
+    return "\n".join(lines) or "(none)"
+
+
 def catalog_json(catalog: list[dict]) -> str:
-    keep = ("name", "label", "description", "unit", "synonyms", "dimensions")
+    keep = ("name", "label", "description", "unit", "synonyms", "quality", "dimensions")
     return json.dumps([{k: m.get(k) for k in keep} for m in catalog], indent=1)

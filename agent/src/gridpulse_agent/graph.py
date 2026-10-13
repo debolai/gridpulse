@@ -6,7 +6,8 @@
            ├─ definition ─> define ─> END                                   rewrite once, then
            └─ out_of_scope ─> END                                           fall back to a table
 
-The model only routes, plans and writes. Validation, execution and the number check are code.
+The model only routes, plans and writes. Validation, execution and the number check are code,
+and so is the note on what the metrics left out (flagged values), appended to every answer.
 Clarifying questions and result inspection (completeness, revision window) join in phase B4.
 """
 
@@ -66,6 +67,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
             state["today"],
             state.get("errors", []),
             state.get("request"),
+            semantic.saved_queries(),
         )
         return {"request": request, "attempts": state.get("attempts", 0) + 1}
 
@@ -162,8 +164,9 @@ def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
     state = graph.invoke({"question": question, "today": today or datetime.now(UTC).date()})
     request = state.get("request")
     result = state.get("result") or {}
+    notes = result.get("notes", []) if state["status"] in ("answered", "fallback_table") else []
     return {
-        "answer": state["answer"],
+        "answer": "\n\n".join([state["answer"], *(f"Note: {n}" for n in notes)]),
         "status": state["status"],
         "route": state.get("route"),
         "metric_request": request.model_dump(mode="json") if request else None,
@@ -172,4 +175,5 @@ def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
         "rows": result.get("rows", []),
         "attempts": state.get("attempts", 0),
         "unsupported_numbers": state.get("unsupported", []),
+        "notes": notes,
     }

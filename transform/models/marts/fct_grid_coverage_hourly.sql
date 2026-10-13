@@ -2,7 +2,7 @@
 -- Grain: BA x UTC hour, from the BA's first reported hour to the latest hour with demand
 -- anywhere (forecast rows run into the future, so they don't count) or the BA's retirement.
 -- The denominator for data_completeness: a metric computed only from reported rows would
--- never see a missing hour.
+-- never see a missing hour. Valid = reported and not flagged (data_completeness counts these).
 
 with fct as (
 
@@ -52,6 +52,7 @@ select
     cast(expected.ba_code as varchar) as ba_code,
     cast(expected.period_utc as {{ timestamp_type() }}) as period_utc,
     fct.demand_mwh is not null as is_demand_reported,
+    coalesce(fct.demand_quality_status = 'ok', false) as is_demand_valid,
     fct.demand_forecast_mwh is not null as is_forecast_reported,
     fct.net_generation_mwh is not null as is_net_generation_reported,
     fct.total_interchange_mwh is not null as is_interchange_reported

@@ -131,6 +131,65 @@ cases:
       start: 2026-08-01
       end: 2026-09-01
 
+  # B3 metrics
+  - id: renewable-share-one-ba
+    question: What share of CISO's generation came from renewables in August 2026?
+    expect:
+      metrics: [renewable_share]
+      filters: [{dimension: balancing_authority, values: [CISO]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: fuel-mix-by-category
+    question: Break down ERCOT's generation by fuel category for September 2026.
+    expect:
+      metrics: [generation_by_fuel]
+      group_by: [fuel_type__fuel_category]
+      filters: [{dimension: balancing_authority, values: [ERCO]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: system-peak-lower-48
+    question: What was the combined peak demand of the whole Lower 48 in July 2026?
+    expect:
+      metrics: [coincident_peak_demand]
+      filters: [{dimension: demand_scope__scope_code, values: [US48]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: net-imports-one-ba
+    question: Was California ISO a net importer of electricity in September 2026?
+    expect:
+      metrics: [net_imports]
+      filters: [{dimension: balancing_authority, values: [CISO]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: cooling-degree-hours-by-ba
+    question: Which balancing authority had the most cooling degree hours in July 2026?
+    expect:
+      metrics: [cooling_degree_hours]
+      group_by: [balancing_authority]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: flagged-values-by-ba-last-month
+    question: How many values were flagged as bad data for each balancing authority last month?
+    expect:
+      metrics: [flagged_values]
+      group_by: [balancing_authority]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: revision-rate-by-series
+    question: How often were EIA values revised in October 2026, by series?
+    expect:
+      metrics: [revision_rate]
+      group_by: [value_check__item_code]
+      start: 2026-10-01
+      end: 2026-11-01
+      end_tolerance_days: 20  # the whole month, or through today (2026-10-12): both read right
+
   - id: definition-route
     question: What does the forecast error metric measure and how is it calculated?
     route: definition

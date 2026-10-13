@@ -42,8 +42,10 @@ class ScriptedBrain:
     def route(self, question):
         return RouteDecision(route=self._route, reason="scripted")
 
-    def plan(self, question, catalog, bas, today, errors, previous):
-        self.plan_calls.append({"errors": list(errors), "previous": previous})
+    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
+        self.plan_calls.append(
+            {"errors": list(errors), "previous": previous, "saved_queries": list(saved_queries)}
+        )
         return self.plans.pop(0)
 
     def answer(self, question, request, result, catalog, bad):
@@ -63,6 +65,9 @@ class FakeSemantic:
 
     def catalog(self):
         return self._catalog
+
+    def saved_queries(self):
+        return json.loads((FIXTURES / "saved_queries.json").read_text())
 
     def balancing_authorities(self):
         return json.loads((FIXTURES / "bas.json").read_text())

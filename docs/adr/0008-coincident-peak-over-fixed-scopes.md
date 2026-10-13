@@ -34,3 +34,7 @@ missing BA can only lower an hour's sum, so the default includes all hours.
 - Validated against EIA's published aggregates over 2025-10-01..2026-10-12: US48, CAL and TEX
   peaks match exactly (753,630 / 61,700 / 91,075 MW); median hourly gap 0, p99 1.1% (US48).
 - Adding a scope (e.g. ISO/RTO footprints) is a new `scope_type` in the mart, no metric change.
+- Update 2026-10-13 (B3 slice 4, quality defaults): a BA whose demand is flagged (spike, zero)
+  is left out of the hour's sum like a missing one, and `is_complete` now means every BA
+  reported a valid value. The peaks above are unchanged and the hourly gap to EIA is the same
+  (median 0, p99 1.1%); complete hours: Eastern 89%, Western 80%, ERCOT 100%, US48 72%.

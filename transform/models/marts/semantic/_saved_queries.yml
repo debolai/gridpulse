@@ -1,0 +1,67 @@
+version: 2
+
+# Common questions, shown to the agent as ready-made request templates (metrics + group-by);
+# the agent adds the time window and filters, and the request is validated like any other.
+saved_queries:
+  - name: daily_demand_by_ba
+    label: Daily demand and peak by BA
+    description: >
+      Each balancing authority's demand (MWh) and peak hour (MW) per day. For "how did load
+      change", daily load curves, and comparing BAs over a period.
+    config:
+      tags: [agent]
+    query_params:
+      metrics: [demand, peak_demand]
+      group_by:
+        - "Entity('balancing_authority')"
+        - "TimeDimension('metric_time', 'day')"
+
+  - name: forecast_accuracy_by_ba
+    label: Forecast accuracy by BA
+    description: >
+      Day-ahead forecast error (MAPE, %) and bias (MWh) per balancing authority. For "which BA
+      forecasts best/worst"; add order_by on forecast_error_mape.
+    config:
+      tags: [agent]
+    query_params:
+      metrics: [forecast_error_mape, forecast_bias]
+      group_by:
+        - "Entity('balancing_authority')"
+
+  - name: fuel_mix_by_ba
+    label: Generation mix by BA
+    description: >
+      Generation (MWh) per balancing authority and fuel category (renewable, fossil, nuclear,
+      ...). For "what powers X" and fuel-mix comparisons.
+    config:
+      tags: [agent]
+    query_params:
+      metrics: [generation_by_fuel]
+      group_by:
+        - "Entity('balancing_authority')"
+        - "Dimension('fuel_type__fuel_category')"
+
+  - name: monthly_system_peaks
+    label: Monthly system peaks
+    description: >
+      Coincident (combined) peak demand per month for each interconnection, EIA region and the
+      Lower 48. Filter demand_scope__scope_code to one scope, e.g. US48.
+    config:
+      tags: [agent]
+    query_params:
+      metrics: [coincident_peak_demand]
+      group_by:
+        - "Dimension('demand_scope__scope_code')"
+        - "TimeDimension('metric_time', 'month')"
+
+  - name: data_quality_by_ba
+    label: Data quality by BA
+    description: >
+      Share of expected hours with valid demand, and how many values were flagged (spikes,
+      zeros) and left out, per balancing authority. For "how reliable is X's data".
+    config:
+      tags: [agent]
+    query_params:
+      metrics: [data_completeness, flagged_values]
+      group_by:
+        - "Entity('balancing_authority')"

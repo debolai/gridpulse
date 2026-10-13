@@ -1,8 +1,55 @@
 [
  {
+  "name": "coincident_peak_demand",
+  "label": "Coincident peak demand (MW)",
+  "description": "System peak of a group of balancing authorities: the highest hour of their COMBINED demand (MWh in one hour = average MW). Always filter or group by demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not supported. A BA that didn't report, or whose value is flagged (spike, zero), is left out of that hour's total; filter demand_scope__is_complete = true to use only hours where every BA reported a valid value. Synonyms: system peak, regional peak, combined peak.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MW",
+  "additive": false,
+  "synonyms": [
+   "system peak",
+   "regional peak",
+   "combined peak",
+   "grid peak"
+  ],
+  "quality": "Each hour's total leaves out BAs whose demand is flagged suspect or invalid (spikes, zeros).",
+  "dimensions": [
+   "demand_scope__is_complete",
+   "demand_scope__period_utc",
+   "demand_scope__scope_code",
+   "demand_scope__scope_type",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "cooling_degree_hours",
+  "label": "Cooling degree hours (\u00b0C\u00b7h)",
+  "description": "How much air-conditioning weather the BA had: the sum over hours of max(temperature - 18.3 \u00b0C, 0), using the BA's population-weighted temperature (18.3 \u00b0C = 65 \u00b0F, the U.S. convention). Higher = hotter. Hours without a temperature are skipped (NOAA publishes about 1.5 days after EIA). Summed across several BAs it adds their totals; compare BAs by grouping by balancing_authority. Synonyms: CDH, heat, cooling demand weather.",
+  "type": "simple",
+  "agent": true,
+  "unit": "degC_hours",
+  "additive": true,
+  "synonyms": [
+   "CDH",
+   "heat",
+   "hot weather"
+  ],
+  "quality": null,
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
   "name": "data_completeness",
   "label": "Data completeness (demand, %)",
-  "description": "Share of expected BA-hours that have a reported demand value, as a fraction from 0 to 1. Expected hours run from each BA's first report to the latest hour with demand. Synonyms: coverage, missing data, gaps.",
+  "description": "Share of expected BA-hours that have a valid demand value (reported and not flagged as a spike or zero), as a fraction from 0 to 1. Expected hours run from each BA's first report to the latest hour with demand. Synonyms: coverage, missing data, gaps.",
   "type": "ratio",
   "agent": true,
   "unit": "fraction",
@@ -12,6 +59,7 @@
    "gaps",
    "missing data"
   ],
+  "quality": null,
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -23,7 +71,7 @@
  {
   "name": "demand",
   "label": "Demand (MWh)",
-  "description": "Total electricity demand (load) in MWh: the sum of hourly demand over the selected hours and balancing authorities. Hours the BA did not report are excluded. Synonyms: load, consumption, usage.",
+  "description": "Total electricity demand (load) in MWh: the sum of hourly demand over the selected hours and balancing authorities. Hours the BA did not report, and values flagged suspect or invalid (one-hour spikes, zeros), are excluded; flagged_values counts them. Synonyms: load, consumption, usage.",
   "type": "simple",
   "agent": true,
   "unit": "MWh",
@@ -33,6 +81,7 @@
    "consumption",
    "usage"
   ],
+  "quality": "Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).",
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -52,6 +101,32 @@
   "unit": "MWh",
   "additive": true,
   "synonyms": [],
+  "quality": "Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).",
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "flagged_values",
+  "label": "Flagged values",
+  "description": "How many hourly values failed the quality checks and are left out of the other metrics: demand, day-ahead forecast and net generation values flagged suspect (one-hour spike, zero forecast or generation, negative generation) or invalid (zero demand), counted per BA-hour and series. Use it to ask how clean the data behind an answer is. Synonyms: bad data, spikes, anomalies, quality issues.",
+  "type": "simple",
+  "agent": true,
+  "unit": "values",
+  "additive": true,
+  "synonyms": [
+   "bad data",
+   "spikes",
+   "anomalies",
+   "quality issues"
+  ],
+  "quality": null,
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -65,7 +140,7 @@
  {
   "name": "forecast_bias",
   "label": "Day-ahead forecast bias (MWh)",
-  "description": "Average of (forecast - actual) demand per hour, over hours where both were reported. Positive means the operator over-forecast; negative means it under-forecast.",
+  "description": "Average of (forecast - actual) demand per hour, over hours where both were reported and neither is flagged. Positive means the operator over-forecast; negative means it under-forecast.",
   "type": "simple",
   "agent": true,
   "unit": "MWh",
@@ -74,6 +149,7 @@
    "over-forecast",
    "under-forecast"
   ],
+  "quality": "Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).",
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -87,7 +163,7 @@
  {
   "name": "forecast_error_mape",
   "label": "Day-ahead forecast error (MAPE, %)",
-  "description": "Mean absolute percentage error of the BA's day-ahead demand forecast: average of |actual - forecast| / actual x 100 over hours where actual demand > 0 and both values were reported. Lower is better.",
+  "description": "Mean absolute percentage error of the BA's day-ahead demand forecast: average of |actual - forecast| / actual x 100 over hours where actual demand > 0 and both values were reported and not flagged. Lower is better.",
   "type": "simple",
   "agent": true,
   "unit": "percent",
@@ -96,6 +172,82 @@
    "forecast accuracy",
    "forecast miss"
   ],
+  "quality": "Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).",
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "generation_by_fuel",
+  "label": "Generation by fuel (MWh)",
+  "description": "Net generation in MWh from EIA's fuel-type report. Group by fuel_type__fuel_name, fuel_type__fuel_category or fuel_type__is_renewable for the fuel mix; filter on a fuel for one source (\"wind generation\"). Storage counts negative while charging. Summed over all fuels it is close to net_generation but comes from a separate report. Synonyms: fuel mix, generation mix, output by source.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [
+   "fuel mix",
+   "generation mix",
+   "output by source"
+  ],
+  "quality": null,
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "fuel_hour__date_local",
+   "fuel_hour__hour_local",
+   "fuel_hour__period_utc",
+   "fuel_type__fuel_category",
+   "fuel_type__fuel_name",
+   "fuel_type__is_renewable",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "net_generation",
+  "label": "Net generation (MWh)",
+  "description": "Total net generation in MWh (EIA series NG): electricity the BA's plants produced minus their own use, summed over the selected hours and balancing authorities. For the split by fuel use generation_by_fuel. Values flagged suspect (spikes, zeros, negatives) are excluded. Synonyms: generation, output, production.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [
+   "generation",
+   "output",
+   "production"
+  ],
+  "quality": "Excludes net generation values flagged suspect (one-hour spikes, zeros, negatives).",
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "grid_hour__date_local",
+   "grid_hour__hour_local",
+   "grid_hour__period_utc",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "net_imports",
+  "label": "Net imports (MWh)",
+  "description": "Electricity the BA took in from its neighbours minus what it sent out, MWh: -1 x total interchange (EIA reports exports as positive; this flips the sign so imports read positive). Negative = net exporter. Summed over several BAs, flows between them roughly cancel, leaving the group's exchange with everyone else. Synonyms: imports, interchange, power imported.",
+  "type": "simple",
+  "agent": true,
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [
+   "imports",
+   "interchange",
+   "power imported"
+  ],
+  "quality": null,
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -109,7 +261,7 @@
  {
   "name": "peak_demand",
   "label": "Peak hourly demand (MW)",
-  "description": "Highest single-hour demand of one balancing authority in the period (MWh in one hour = average MW). NOT a system peak: when grouped across several BAs it returns the largest individual BA-hour, not the combined peak. For a region's combined peak use coincident_peak_demand (added later).",
+  "description": "Highest single-hour demand of one balancing authority in the period (MWh in one hour = average MW). NOT a system peak: when grouped across several BAs it returns the largest individual BA-hour, not the combined peak. For a region's combined peak use coincident_peak_demand. Flagged values (spikes, zeros) are excluded, so a one-hour reporting spike can't become the peak.",
   "type": "simple",
   "agent": true,
   "unit": "MW",
@@ -118,6 +270,7 @@
    "max load",
    "peak load"
   ],
+  "quality": "Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).",
   "dimensions": [
    "balancing_authority__ba_name",
    "balancing_authority__interconnection",
@@ -129,25 +282,81 @@
   ]
  },
  {
-  "name": "coincident_peak_demand",
-  "label": "Coincident peak demand (MW)",
-  "description": "System peak of a group of balancing authorities: the highest hour of their COMBINED demand (MWh in one hour = average MW). Always filter or group by demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not supported. A BA that didn't report lowers that hour's total; filter demand_scope__is_complete = true to use only hours where every BA reported. Synonyms: system peak, regional peak, combined peak.",
+  "name": "renewable_generation",
+  "label": "Renewable generation (MWh)",
+  "description": "Net generation from wind, solar, hydro and geothermal (including hybrids with storage), MWh. Synonyms: clean generation, green generation.",
   "type": "simple",
   "agent": true,
-  "unit": "MW",
+  "unit": "MWh",
+  "additive": true,
+  "synonyms": [
+   "green generation",
+   "clean generation"
+  ],
+  "quality": null,
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "fuel_hour__date_local",
+   "fuel_hour__hour_local",
+   "fuel_hour__period_utc",
+   "fuel_type__fuel_category",
+   "fuel_type__fuel_name",
+   "fuel_type__is_renewable",
+   "metric_time__hour"
+  ]
+ },
+ {
+  "name": "renewable_share",
+  "label": "Renewable share of generation (fraction)",
+  "description": "Renewable generation divided by generation from all fuels, as a fraction from 0 to 1 (0.35 = 35%). A ratio of sums over the selected hours and BAs, never an average of hourly shares. Both parts come from the same fuel-type report, so the share is consistent even where fuels and net generation disagree. Synonyms: renewables percentage, green share.",
+  "type": "ratio",
+  "agent": true,
+  "unit": "fraction",
   "additive": false,
   "synonyms": [
-   "system peak",
-   "regional peak",
-   "combined peak",
-   "grid peak"
+   "renewables percentage",
+   "green share",
+   "clean share"
   ],
+  "quality": null,
   "dimensions": [
-   "demand_scope__is_complete",
-   "demand_scope__period_utc",
-   "demand_scope__scope_code",
-   "demand_scope__scope_type",
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "fuel_hour__date_local",
+   "fuel_hour__hour_local",
+   "fuel_hour__period_utc",
+   "fuel_type__fuel_category",
+   "fuel_type__fuel_name",
+   "fuel_type__is_renewable",
    "metric_time__hour"
+  ]
+ },
+ {
+  "name": "revision_rate",
+  "label": "Revision rate (fraction)",
+  "description": "Share of re-checked EIA values that the BA changed after first publishing them, as a fraction from 0 to 1. Only values the pipeline read at least twice count (recent hours are re-read for 30 days; older history loaded once can't show revisions). Group by value_check__route (region-data, fuel-type-data, interchange-data) or value_check__item_code (D = demand, DF = day-ahead forecast, NG, TI, a fuel code or a neighbour BA) to see what gets revised. Synonyms: data revisions, corrections.",
+  "type": "ratio",
+  "agent": true,
+  "unit": "fraction",
+  "additive": false,
+  "synonyms": [
+   "revisions",
+   "corrections",
+   "restatements",
+   "data changes"
+  ],
+  "quality": null,
+  "dimensions": [
+   "balancing_authority__ba_name",
+   "balancing_authority__interconnection",
+   "balancing_authority__region",
+   "metric_time__hour",
+   "value_check__item_code",
+   "value_check__period_utc",
+   "value_check__route"
   ]
  }
 ]

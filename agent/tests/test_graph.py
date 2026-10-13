@@ -24,6 +24,14 @@ def test_happy_path(catalog, settings):
     assert out["sql"] == "select ..." and out["rows"] == RESULT["rows"]
 
 
+def test_answer_ends_with_the_quality_notes(catalog, settings):
+    note = "Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros)."
+    brain = ScriptedBrain(plans=[req()], answers=["PJM: 70,276,500 MWh."])
+    out = run(brain, FakeSemantic(catalog, [{**RESULT, "notes": [note]}]), settings)
+    assert out["status"] == "answered" and out["notes"] == [note]
+    assert out["answer"] == f"PJM: 70,276,500 MWh.\n\nNote: {note}"
+
+
 def test_validation_errors_go_back_to_the_planner(catalog, settings):
     bad = req(metrics=["peak_demand"])  # pooled across BAs: blocked by code
     good = req(metrics=["peak_demand"], group_by=["balancing_authority"])

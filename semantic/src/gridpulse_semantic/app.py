@@ -2,6 +2,7 @@
 
 GET  /health     liveness + which engine/target and data version
 GET  /metrics    the metric catalog (?agent_only=true for the agent's allow-list)
+GET  /saved-queries   common questions as request templates (metrics + group_by)
 POST /compile    MetricRequest -> SQL (no execution)
 POST /query      MetricRequest -> rows, the SQL that produced them, cache info
 POST /cache/refresh   pipeline hook after each dbt build: drops cached results
@@ -40,6 +41,7 @@ class QueryResponse(BaseModel):
     cached: bool
     duration_ms: int
     data_version: str
+    notes: list[str]  # what the metrics leave out by default, e.g. flagged values
 
 
 def _known(req: MetricRequest) -> None:
@@ -73,6 +75,11 @@ def refresh_cache() -> dict:
 @app.get("/metrics")
 def metrics(agent_only: bool = False) -> list[dict]:
     return engine().catalog(agent_only=agent_only)
+
+
+@app.get("/saved-queries")
+def saved_queries(agent_only: bool = False) -> list[dict]:
+    return engine().saved_queries(agent_only=agent_only)
 
 
 @app.post("/compile", response_model=CompileResponse)

@@ -78,61 +78,93 @@ models:
         label: Demand (MWh)
         description: >
           Total electricity demand (load) in MWh: the sum of hourly demand over the selected
-          hours and balancing authorities. Hours the BA did not report are excluded.
-          Synonyms: load, consumption, usage.
+          hours and balancing authorities. Hours the BA did not report, and values flagged
+          suspect or invalid (one-hour spikes, zeros), are excluded; flagged_values counts
+          them. Synonyms: load, consumption, usage.
         type: simple
         agg: sum
-        expr: demand_mwh
+        expr: case when demand_quality_status = 'ok' then demand_mwh end
         config:
-          meta: {agent: true, unit: MWh, additive: true, synonyms: [load, consumption, usage]}
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            synonyms: [load, consumption, usage]
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
       - name: peak_demand
         label: Peak hourly demand (MW)
         description: >
           Highest single-hour demand of one balancing authority in the period (MWh in one
           hour = average MW). NOT a system peak: when grouped across several BAs it returns
           the largest individual BA-hour, not the combined peak. For a region's combined
-          peak use coincident_peak_demand.
+          peak use coincident_peak_demand. Flagged values (spikes, zeros) are excluded, so a
+          one-hour reporting spike can't become the peak.
         type: simple
         agg: max
-        expr: demand_mwh
+        expr: case when demand_quality_status = 'ok' then demand_mwh end
         config:
-          meta: {agent: true, unit: MW, additive: false, synonyms: [max load, peak load]}
+          meta:
+            agent: true
+            unit: MW
+            additive: false
+            synonyms: [max load, peak load]
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
       - name: forecast_error_mape
         label: Day-ahead forecast error (MAPE, %)
         description: >
           Mean absolute percentage error of the BA's day-ahead demand forecast:
           average of |actual - forecast| / actual x 100 over hours where actual demand > 0 and
-          both values were reported. Lower is better.
+          both values were reported and not flagged. Lower is better.
         type: simple
         agg: average
         expr: >
-          case when demand_mwh > 0 and demand_forecast_mwh is not null
+          case when demand_quality_status = 'ok' and demand_forecast_quality_status = 'ok'
+          and demand_mwh > 0
           then abs(demand_mwh - demand_forecast_mwh) / demand_mwh * 100 end
         config:
-          meta: {agent: true, unit: percent, additive: false, synonyms: [forecast accuracy, forecast miss]}
+          meta:
+            agent: true
+            unit: percent
+            additive: false
+            synonyms: [forecast accuracy, forecast miss]
+            quality: Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).
       - name: forecast_bias
         label: Day-ahead forecast bias (MWh)
         description: >
-          Average of (forecast - actual) demand per hour, over hours where both were reported.
-          Positive means the operator over-forecast; negative means it under-forecast.
+          Average of (forecast - actual) demand per hour, over hours where both were reported
+          and neither is flagged. Positive means the operator over-forecast; negative means it
+          under-forecast.
         type: simple
         agg: average
         expr: >
-          case when demand_mwh is not null and demand_forecast_mwh is not null
+          case when demand_quality_status = 'ok' and demand_forecast_quality_status = 'ok'
           then demand_forecast_mwh - demand_mwh end
         config:
-          meta: {agent: true, unit: MWh, additive: false, synonyms: [over-forecast, under-forecast]}
+          meta:
+            agent: true
+            unit: MWh
+            additive: false
+            synonyms: [over-forecast, under-forecast]
+            quality: Excludes hours where demand or the forecast is flagged suspect or invalid (spikes, zeros).
       - name: net_generation
         label: Net generation (MWh)
         description: >
           Total net generation in MWh (EIA series NG): electricity the BA's plants produced
           minus their own use, summed over the selected hours and balancing authorities. For
-          the split by fuel use generation_by_fuel. Synonyms: generation, output, production.
+          the split by fuel use generation_by_fuel. Values flagged suspect (spikes, zeros,
+          negatives) are excluded. Synonyms: generation, output, production.
         type: simple
         agg: sum
-        expr: net_generation_mwh
+        expr: case when net_generation_quality_status = 'ok' then net_generation_mwh end
         config:
-          meta: {agent: true, unit: MWh, additive: true, synonyms: [generation, output, production]}
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            synonyms: [generation, output, production]
+            quality: >-
+              Excludes net generation values flagged suspect (one-hour spikes, zeros,
+              negatives).
       - name: net_imports
         label: Net imports (MWh)
         description: >
@@ -143,7 +175,7 @@ models:
           Synonyms: imports, interchange, power imported.
         type: simple
         agg: sum
-        expr: -1 * total_interchange_mwh
+        expr: case when total_interchange_quality_status = 'ok' then -1 * total_interchange_mwh end
         config:
           meta: {agent: true, unit: MWh, additive: true, synonyms: [imports, interchange, power imported]}
       - name: cooling_degree_hours
@@ -160,6 +192,26 @@ models:
         expr: greatest(temperature_c - 18.3, 0)
         config:
           meta: {agent: true, unit: degC_hours, additive: true, synonyms: [CDH, heat, hot weather]}
+      - name: flagged_values
+        label: Flagged values
+        description: >
+          How many hourly values failed the quality checks and are left out of the other
+          metrics: demand, day-ahead forecast and net generation values flagged suspect
+          (one-hour spike, zero forecast or generation, negative generation) or invalid (zero
+          demand), counted per BA-hour and series. Use it to ask how clean the data behind an
+          answer is. Synonyms: bad data, spikes, anomalies, quality issues.
+        type: simple
+        agg: sum
+        expr: >
+          case when demand_quality_status in ('suspect', 'invalid') then 1 else 0 end
+          + case when demand_forecast_quality_status in ('suspect', 'invalid') then 1 else 0 end
+          + case when net_generation_quality_status in ('suspect', 'invalid') then 1 else 0 end
+        config:
+          meta:
+            agent: true
+            unit: values
+            additive: true
+            synonyms: [bad data, spikes, anomalies, quality issues]
       - name: demand_month_to_date
         label: Demand, month to date (MWh)
         description: Cumulative demand from the start of each month.
@@ -170,7 +222,11 @@ models:
         # (MetricFlow defaults to the first, which looked wrong in the A4 spike).
         period_agg: last
         config:
-          meta: {agent: true, unit: MWh, additive: true}
+          meta:
+            agent: true
+            unit: MWh
+            additive: true
+            quality: Excludes demand values flagged suspect (one-hour spikes) or invalid (zeros).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -306,14 +362,20 @@ models:
         type: simple
         agg: sum_boolean
         expr: is_demand_reported
+      - name: demand_hours_valid
+        label: BA-hours with valid demand
+        description: BA-hours with a reported demand value that passed the quality checks.
+        type: simple
+        agg: sum_boolean
+        expr: is_demand_valid
       - name: data_completeness
         label: Data completeness (demand, %)
         description: >
-          Share of expected BA-hours that have a reported demand value, as a fraction from 0 to
-          1. Expected hours run from each BA's first report to the latest hour with demand.
-          Synonyms: coverage, missing data, gaps.
+          Share of expected BA-hours that have a valid demand value (reported and not flagged
+          as a spike or zero), as a fraction from 0 to 1. Expected hours run from each BA's
+          first report to the latest hour with demand. Synonyms: coverage, missing data, gaps.
         type: ratio
-        numerator: demand_hours_reported
+        numerator: demand_hours_valid
         denominator: expected_hours
         config:
           meta: {agent: true, unit: fraction, additive: false, synonyms: [coverage, gaps, missing data]}
@@ -335,6 +397,9 @@ models:
           name: period_utc
       - name: is_demand_reported
         data_type: boolean
+      - name: is_demand_valid
+        data_type: boolean
+        description: Demand was reported and its quality status is ok (not a spike or zero).
       - name: is_forecast_reported
         data_type: boolean
       - name: is_net_generation_reported
@@ -362,8 +427,9 @@ models:
           demand_scope__scope_code: an interconnection (Eastern, Western, ERCOT), an EIA region
           (CAL, TEX, MIDA, NY, ...) or US48 for the whole Lower 48. Lower than adding up each
           BA's own peak, because BAs peak at different hours. Arbitrary sets of BAs are not
-          supported. A BA that didn't report lowers that hour's total; filter
-          demand_scope__is_complete = true to use only hours where every BA reported.
+          supported. A BA that didn't report, or whose value is flagged (spike, zero), is left
+          out of that hour's total; filter demand_scope__is_complete = true to use only hours
+          where every BA reported a valid value.
           Synonyms: system peak, regional peak, combined peak.
         type: simple
         agg: max
@@ -374,6 +440,9 @@ models:
             unit: MW
             additive: false
             synonyms: [system peak, regional peak, combined peak, grid peak]
+            quality: >-
+              Each hour's total leaves out BAs whose demand is flagged suspect or invalid
+              (spikes, zeros).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -420,7 +489,9 @@ models:
           description: Start of the hour in UTC.
       - name: demand_mwh
         data_type: double
-        description: Sum of reported demand across the scope's BAs for the hour, MWh.
+        description: >
+          Sum of valid demand across the scope's BAs for the hour, MWh (flagged values left
+          out).
       - name: bas_expected
         data_type: integer
         description: BAs in the scope that should have reported demand this hour.
@@ -429,14 +500,14 @@ models:
         description: BAs in the scope that did report demand this hour.
       - name: bas_flagged
         data_type: integer
-        description: BAs whose demand this hour is flagged suspect or invalid (still summed).
+        description: BAs whose demand this hour is flagged suspect or invalid (not summed).
       - name: is_complete
         data_type: boolean
-        description: True when every expected BA reported demand this hour.
+        description: True when every expected BA reported a valid (unflagged) demand value.
         dimension:
           type: categorical
           name: is_complete
-          description: True when every BA in the group reported demand for the hour.
+          description: True when every BA in the group reported a valid demand value for the hour.
 
   - name: fct_value_checks_hourly
     description: >
@@ -1033,3 +1104,86 @@ unit_tests:
         region-data,PJM,DF,2026-10-01 00:00:00,2,1,true,false,2026-10-02 02:00:00
         fuel-type-data,PJM,SUN,2026-10-01 00:00:00,3,2,true,true,2026-10-03 02:00:00
         interchange-data,PJM,MISO,2026-10-01 00:00:00,1,2,false,false,2026-10-01 02:00:00
+
+  - name: demand_scope_leaves_out_flagged_and_missing_bas
+    description: >
+      Hour 1: A reports 100 (ok), B a flagged 1000 MWh spike, C nothing - the region sums only
+      A and is incomplete. Hour 2: all three valid - summed and complete. G is generation-only
+      and never expected.
+    model: fct_demand_scope_hourly
+    given:
+      - input: ref('fct_grid_coverage_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,is_demand_reported
+          A,2026-07-01 00:00:00,true
+          B,2026-07-01 00:00:00,true
+          C,2026-07-01 00:00:00,false
+          G,2026-07-01 00:00:00,false
+          A,2026-07-01 01:00:00,true
+          B,2026-07-01 01:00:00,true
+          C,2026-07-01 01:00:00,true
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,interconnection,region_code,is_generation_only
+          A,Western,CAL,false
+          B,Western,CAL,false
+          C,Western,NW,false
+          G,Western,NW,true
+      - input: ref('fct_grid_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,demand_mwh,demand_quality_status
+          A,2026-07-01 00:00:00,100.0,ok
+          B,2026-07-01 00:00:00,1000.0,suspect
+          A,2026-07-01 01:00:00,110.0,ok
+          B,2026-07-01 01:00:00,50.0,ok
+          C,2026-07-01 01:00:00,20.0,ok
+    expect:
+      format: csv
+      rows: |
+        scope_id,period_utc,demand_mwh,bas_expected,bas_reported,bas_flagged,is_complete
+        interconnection:Western,2026-07-01 00:00:00,100.0,3,2,1,false
+        region:CAL,2026-07-01 00:00:00,100.0,2,2,1,false
+        region:NW,2026-07-01 00:00:00,,1,0,0,false
+        lower_48:US48,2026-07-01 00:00:00,100.0,3,2,1,false
+        interconnection:Western,2026-07-01 01:00:00,180.0,3,3,0,true
+        region:CAL,2026-07-01 01:00:00,160.0,2,2,0,true
+        region:NW,2026-07-01 01:00:00,20.0,1,1,0,true
+        lower_48:US48,2026-07-01 01:00:00,180.0,3,3,0,true
+
+  - name: coverage_valid_means_reported_and_not_flagged
+    description: >
+      An ok value is reported and valid; a flagged spike is reported but not valid; an hour
+      with no row is neither.
+    model: fct_grid_coverage_hourly
+    given:
+      - input: ref('fct_grid_hourly')
+        format: csv
+        rows: |
+          ba_code,period_utc,demand_mwh,demand_quality_status
+          PJM,2026-07-01 00:00:00,100.0,ok
+          PJM,2026-07-01 01:00:00,900.0,suspect
+          PJM,2026-07-01 03:00:00,105.0,ok
+      - input: ref('dim_balancing_authority')
+        format: csv
+        rows: |
+          ba_code,retirement_date
+          PJM,
+      - input: ref('time_spine_hourly')
+        format: csv
+        rows: |
+          date_hour
+          2026-07-01 00:00:00
+          2026-07-01 01:00:00
+          2026-07-01 02:00:00
+          2026-07-01 03:00:00
+    expect:
+      format: csv
+      rows: |
+        ba_code,period_utc,is_demand_reported,is_demand_valid
+        PJM,2026-07-01 00:00:00,true,true
+        PJM,2026-07-01 01:00:00,true,false
+        PJM,2026-07-01 02:00:00,false,false
+        PJM,2026-07-01 03:00:00,true,true
