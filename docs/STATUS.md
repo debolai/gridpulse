@@ -8,7 +8,7 @@ Last updated: 2026-10-13
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase B5 (CI/CD) on `feat/b5-cicd` (draft PR #6): merged (PRs #6, #7); slices 1-3 and 5 done; slice 4 (CD) verified with the demo down; the deploy/smoke/rollback check needs the demo up (owner's OK for cost). B4 merged (PR #5), B3 merged (PR #4). (Phase A closes when TODO #11 lands; see Next up.)
+- Phase B5 (CI/CD): merged (PRs #6, #7); slices 1-3 and 5 done; slice 4 (CD) verified with the demo down; the deploy/smoke/rollback check needs the demo up (owner's OK for cost). B4 merged (PR #5), B3 merged (PR #4). (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
 1. With the owner's OK for demo cost: `make aws-up`, a merge deployed by CD with the smoke test, and a rollback test → tick slice 4 and B5
@@ -195,3 +195,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — B5 slice 5 done: `main` protected (8 required checks, admins included, merge commits kept, no required review). Next: merge PR #6 and watch the first CD run.
 - 2026-10-13 — PR #6 merged (B5 code). First CD run published SHA-tagged arm64 images; deploy awaits the owner's approval. pr-cleanup failed (Glue function ARNs); fix in PR #7, applied by CD after approval.
 - 2026-10-14 — Owner approved both CD runs: foundation applied (no changes, then the CI-role fix), deploy skipped with the demo down; PR #6's cleanup re-run succeeded. Next: the deploy/smoke/rollback check with the demo up (needs the owner's OK).
+- 2026-10-14 — TODO #7 done (owner confirmed; `make bedrock-check` no longer shows "use case not submitted"). Bedrock now waits only on TODO #11 (quota 0).
