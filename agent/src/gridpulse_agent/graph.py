@@ -52,6 +52,7 @@ class State(TypedDict, total=False):
     result: dict | None
     answer: str
     unsupported: list[str]
+    rejected: list[str]  # every number the check rejected this turn, kept for diagnosis
     rewrites: int
     caveats: list[str]
     status: Literal[
@@ -210,10 +211,16 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         bad = unsupported_numbers(state["answer"], state["result"]["rows"], context)
         if not bad:
             return {"unsupported": [], "status": "answered"}
+        rejected = [*state.get("rejected", []), *bad]
         if state.get("rewrites", 0) < 1:
-            return {"unsupported": bad, "rewrites": state.get("rewrites", 0) + 1}
+            return {
+                "unsupported": bad,
+                "rejected": rejected,
+                "rewrites": state.get("rewrites", 0) + 1,
+            }
         return {
             "unsupported": bad,
+            "rejected": rejected,
             "status": "fallback_table",
             "answer": "I couldn't write an answer whose numbers all match the data, so here is "
             "the result as returned by the semantic layer:\n\n" + _table(state["result"]),
@@ -293,6 +300,7 @@ _FRESH_TURN = {
     "result": None,
     "answer": "",
     "unsupported": [],
+    "rejected": [],
     "rewrites": 0,
     "caveats": [],
     "status": None,
@@ -359,6 +367,8 @@ def _result(state: dict, interrupts, thread_id: str) -> dict[str, Any]:
         "rows": result.get("rows", []),
         "attempts": state.get("attempts", 0),
         "unsupported_numbers": state.get("unsupported", []),
+        "rewrites": state.get("rewrites", 0),
+        "rejected_numbers": state.get("rejected", []),
         "notes": notes,
         "caveats": caveats,
         "thread_id": thread_id,

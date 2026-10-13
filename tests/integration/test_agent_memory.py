@@ -92,3 +92,24 @@ def test_a_paused_conversation_resumes_after_a_restart(dsn):
     assert [t["question"] for t in state["history"]] == [
         "What was California's peak demand? CISO only"
     ]
+
+
+def test_eval_scores_are_stored_for_trends(dsn):
+    from gridpulse_agent.evals import store
+
+    settings = AgentSettings(_env_file=None, provider="openai", openai_api_key=SecretStr("x"))
+    report = {
+        "passed": 49,
+        "total": 53,
+        "pass_rate": 49 / 53,
+        "ground_check_failures": 2,
+        "cases": [{"id": "a", "passed": True, "reasons": []}],
+    }
+    store(dsn, "e2e", settings, report)
+    store(dsn, "planner", settings, {**report, "ground_check_failures": None})
+    with psycopg.connect(dsn) as conn:
+        rows = conn.execute(
+            "SELECT mode, provider, passed, total, ground_check_failures, report->'cases'->0->>'id'"
+            " FROM eval_runs ORDER BY run_at"
+        ).fetchall()
+    assert rows == [("e2e", "openai", 49, 53, 2, "a"), ("planner", "openai", 49, 53, None, "a")]

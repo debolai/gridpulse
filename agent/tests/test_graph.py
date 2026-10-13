@@ -105,6 +105,7 @@ def test_wrong_number_triggers_one_rewrite(catalog, settings):
     out = run(brain, FakeSemantic(catalog, [RESULT]), settings)
     assert out["status"] == "answered"
     assert brain.answer_calls == [[], ["99,999"]]  # the rewrite was told which number was wrong
+    assert out["rewrites"] == 1 and out["rejected_numbers"] == ["99,999"]  # kept for diagnosis
 
 
 def test_persistent_wrong_number_falls_back_to_the_table(catalog, settings):

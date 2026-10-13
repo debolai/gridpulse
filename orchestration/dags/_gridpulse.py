@@ -73,6 +73,9 @@ DOCKER_ENV = {
         # Temporary (ADR-0003): locally the provider and key come from .env (OpenAI for now).
         "GRIDPULSE_AGENT_PROVIDER": "{{ var.value.get('agent_provider', 'bedrock') }}",
         "GRIDPULSE_AGENT_OPENAI_API_KEY": "{{ var.value.get('openai_api_key', '') }}",
+        # Eval scores (table eval_runs) go to the agent database on the compose Postgres
+        # (local dummy credentials, as in compose.yaml).
+        "GRIDPULSE_AGENT_CHECKPOINT_DSN": "postgresql://gridpulse:gridpulse@postgres:5432/agent",
     },
 }
 

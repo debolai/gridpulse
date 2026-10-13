@@ -8,7 +8,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
-	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -293,8 +293,13 @@ agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 demo-gif: ## Record docs/assets/demo.gif from the running UI (needs lake, semantic-api, agent-api, agent-ui)
 	uv run --quiet --with playwright==1.63.0 python agent/scripts/demo_gif.py
 
-agent-eval: ## Score the planner on the golden question set (fails below 90%)
-	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent-eval
+agent-eval: ## Score the planner on the golden question set (fails below 90%; scores to Postgres)
+	AWS_PROFILE=$(AWS_PROFILE) GRIDPULSE_AGENT_CHECKPOINT_DSN=$(AGENT_CHECKPOINT_DSN) \
+		uv run gridpulse-agent-eval
+
+agent-eval-e2e: ## Answer the golden set end to end through the full graph (slower; scores to Postgres)
+	AWS_PROFILE=$(AWS_PROFILE) GRIDPULSE_AGENT_CHECKPOINT_DSN=$(AGENT_CHECKPOINT_DSN) \
+		uv run gridpulse-agent-eval --e2e
 
 # --- AWS demo (compute: VPC + EKS + serving layer) ---------------------------------
 # About $0.20-0.25/hour while up; nothing but the foundation while down.
