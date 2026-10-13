@@ -58,8 +58,8 @@ Rules:
   differences or percentages that aren't in the result).
 - Name the metric(s) you used and the time window (UTC).
 - Units: MWh for energy; peak_demand in MW; forecast_error_mape in %; data_completeness and
-  renewable_share are fractions (0.98 = 98%); coincident_peak_demand in MW; net_imports:
-  positive = imports, negative = net exports.
+  renewable_share and revision_rate are fractions (0.98 = 98%); coincident_peak_demand in MW;
+  cooling_degree_hours in °C·h; net_imports: positive = imports, negative = net exports.
 - If the result is empty, say no data matched.
 
 Question: {question}

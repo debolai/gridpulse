@@ -81,6 +81,18 @@ models:
           direction. Only for D, DF and NG; never across a gap in the data.
         data_tests: [not_null]
 
+  - name: int_eia__observations
+    description: >
+      Every observation of every EIA value across region-data, fuel-type-data and
+      interchange-data. Grain: route × BA × item × hour × load (item = series, fuel or
+      neighbour BA). Feeds int_grid__revisions and fct_value_checks_hourly.
+    columns:
+      - name: route
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["region-data", "fuel-type-data", "interchange-data"]
+
   - name: int_grid__revisions
     description: >
       Every change to a published EIA value across region-data, fuel-type-data and
@@ -226,28 +238,20 @@ unit_tests:
       macros:
         is_incremental: false
     given:
-      - input: ref('stg_eia__region_data')
+      - input: ref('int_eia__observations')
         format: csv
         rows: |
-          ba_code,series_code,period_utc,value_mwh,record_hash,ingested_at_utc
-          PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 02:00:00
-          PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 03:00:00
-          PJM,D,2026-10-01 00:00:00,110.0,b,2026-10-02 02:00:00
-          PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-03 02:00:00
-          PJM,DF,2026-10-01 00:00:00,,n,2026-10-01 02:00:00
-          PJM,DF,2026-10-01 00:00:00,95.0,f,2026-10-01 05:00:00
-      - input: ref('stg_eia__fuel_type_data')
-        format: csv
-        rows: |
-          ba_code,fuel_code,period_utc,generation_mwh,record_hash,ingested_at_utc
-          PJM,NG,2026-10-01 00:00:00,50.0,g1,2026-10-01 02:00:00
-          PJM,NG,2026-10-01 00:00:00,52.0,g2,2026-10-04 02:00:00
-      - input: ref('stg_eia__interchange_data')
-        format: csv
-        rows: |
-          from_ba_code,to_ba_code,period_utc,interchange_mwh,record_hash,ingested_at_utc
-          PJM,MISO,2026-10-01 00:00:00,10.0,i1,2026-10-01 02:00:00
-          PJM,MISO,2026-10-01 00:00:00,10.0,i1,2026-10-02 02:00:00
+          route,ba_code,item_code,period_utc,value_mwh,record_hash,ingested_at_utc
+          region-data,PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 02:00:00
+          region-data,PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 03:00:00
+          region-data,PJM,D,2026-10-01 00:00:00,110.0,b,2026-10-02 02:00:00
+          region-data,PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-03 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,,n,2026-10-01 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,95.0,f,2026-10-01 05:00:00
+          fuel-type-data,PJM,NG,2026-10-01 00:00:00,50.0,g1,2026-10-01 02:00:00
+          fuel-type-data,PJM,NG,2026-10-01 00:00:00,52.0,g2,2026-10-04 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,10.0,i1,2026-10-01 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,10.0,i1,2026-10-02 02:00:00
     expect:
       format: csv
       rows: |
@@ -278,21 +282,15 @@ unit_tests:
               100.0e0 as previous_value_mwh, 105.0e0 as revised_value_mwh,
               timestamp '2026-09-01 02:00:00' as previous_ingested_at_utc,
               timestamp '2026-09-05 02:00:00' as revised_at_utc
-      - input: ref('stg_eia__region_data')
+      - input: ref('int_eia__observations')
         format: csv
         rows: |
-          ba_code,series_code,period_utc,value_mwh,record_hash,ingested_at_utc
-          PJM,D,2026-09-01 00:00:00,100.0,a,2026-09-01 02:00:00
-          PJM,D,2026-09-01 00:00:00,105.0,b,2026-09-05 02:00:00
-          PJM,D,2026-08-01 00:00:00,80.0,c,2026-08-01 02:00:00
-          PJM,D,2026-08-01 00:00:00,81.0,d,2026-10-10 02:00:00
-          PJM,D,2026-09-01 00:00:00,105.0,b,2026-10-10 02:00:00
-      - input: ref('stg_eia__fuel_type_data')
-        format: dict
-        rows: []
-      - input: ref('stg_eia__interchange_data')
-        format: dict
-        rows: []
+          route,ba_code,item_code,period_utc,value_mwh,record_hash,ingested_at_utc
+          region-data,PJM,D,2026-09-01 00:00:00,100.0,a,2026-09-01 02:00:00
+          region-data,PJM,D,2026-09-01 00:00:00,105.0,b,2026-09-05 02:00:00
+          region-data,PJM,D,2026-08-01 00:00:00,80.0,c,2026-08-01 02:00:00
+          region-data,PJM,D,2026-08-01 00:00:00,81.0,d,2026-10-10 02:00:00
+          region-data,PJM,D,2026-09-01 00:00:00,105.0,b,2026-10-10 02:00:00
     expect:
       format: csv
       rows: |

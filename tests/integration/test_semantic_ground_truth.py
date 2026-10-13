@@ -223,6 +223,48 @@ def test_coincident_peak_can_skip_incomplete_hours(api, sql):
     assert_same(coincident_by_interconnection(api, filters=complete), expected)
 
 
+def test_cooling_degree_hours(api, sql):
+    expected = sql(
+        f"""SELECT ba_code, sum(CASE WHEN temperature_c > 18.3 THEN temperature_c - 18.3 ELSE 0 END)
+        FROM marts.fct_grid_hourly WHERE {WINDOW_SQL} AND temperature_c IS NOT NULL GROUP BY 1"""
+    )
+    assert_same(by_ba(api, "cooling_degree_hours"), expected)
+
+
+def test_revision_rate_counts_revised_values_among_rechecked_ones(api, sql):
+    # Written from the revision audit and the raw observations, not from fct_value_checks_hourly.
+    expected = sql(
+        """WITH obs AS (
+             SELECT 'region-data' AS route, ba_code, series_code AS item, period_utc,
+                 ingested_at_utc
+             FROM staging.stg_eia__region_data
+             UNION ALL
+             SELECT 'fuel-type-data', ba_code, fuel_code, period_utc, ingested_at_utc
+             FROM staging.stg_eia__fuel_type_data
+             UNION ALL
+             SELECT 'interchange-data', from_ba_code, to_ba_code, period_utc, ingested_at_utc
+             FROM staging.stg_eia__interchange_data),
+           rechecked AS (
+             SELECT route, ba_code, item, period_utc FROM obs
+             GROUP BY 1, 2, 3, 4 HAVING count(DISTINCT ingested_at_utc) >= 2),
+           revised AS (
+             SELECT DISTINCT route, ba_code, item_code AS item, period_utc
+             FROM marts.fct_data_revisions)
+           SELECT c.ba_code, cast(count(r.ba_code) AS double) / count(*)
+           FROM rechecked c LEFT JOIN revised r
+             ON r.route = c.route AND r.ba_code = c.ba_code AND r.item = c.item
+             AND r.period_utc = c.period_utc
+           GROUP BY 1"""
+    )
+    resp = api.post(
+        "/query", json={"metrics": ["revision_rate"], "group_by": ["balancing_authority"]}
+    )
+    assert resp.status_code == 200, resp.text
+    got = {row[0]: row[1] for row in resp.json()["rows"]}
+    assert_same(got, expected)
+    assert any(rate > 0 for rate in got.values())  # the re-pulls found real revisions
+
+
 def test_demand_month_to_date_shows_end_of_day_running_total(api, sql):
     expected = sql(
         """SELECT cast(day_utc AS varchar), mtd FROM (
@@ -276,7 +318,10 @@ def test_catalog_exposes_agent_allow_list(api):
         "renewable_share",
         "net_imports",
         "coincident_peak_demand",
+        "cooling_degree_hours",
+        "revision_rate",
     } <= agent
+    assert not {"values_rechecked", "values_revised"} & agent
     assert "expected_hours" not in agent  # building blocks stay hidden from the agent
 
 

@@ -244,7 +244,7 @@ Metrics are defined once in the dbt project as semantic models and MetricFlow me
 | `net_imports` | −1 × sum of total interchange | MWh | EIA reports exports as positive; this flips the sign so imports read positive |
 | `cooling_degree_hours` | Sum of max(temperature − 18.3, 0) | °C·h | Base 18.3 °C (65 °F), the U.S. convention |
 | `data_completeness` | Hours with valid values ÷ expected hours | % | Expected hours come from a generated hour spine |
-| `revision_rate` | Hours revised at least once ÷ hours published | % | From `fct_data_revisions` |
+| `revision_rate` | Values revised at least once ÷ values re-checked (read by two or more loads) | fraction | From `fct_value_checks_hourly`; a value loaded once can't show a revision |
 
 **Dimensions.** Balancing authority, interconnection (Eastern, Western, ERCOT), fuel type, renewable flag, UTC hour, local hour, local date, month, peak-hour flag, and quality status.
 
@@ -556,3 +556,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — B2 done-when: the "freshness under 2 hours for 7 straight days" soak is dropped; freshness tests and Slack alerts enforce it continuously (ADR-0007).
 - 2026-10-13 — B3 slice 1: `dim_fuel_type` is a semantic model (entity `fuel_type`); `generation_by_fuel`, `renewable_generation` and `net_generation` added; `renewable_share` divides by the fuel total from the same fuel-type report (not region-data net generation, which disagrees for some BAs per ADR-0006) and is returned as a fraction like `data_completeness`.
 - 2026-10-13 — B3 slice 2: `net_imports` (−1 × total interchange) and `coincident_peak_demand` over fixed scopes from the new mart `fct_demand_scope_hourly` (MetricFlow can't sum then max; ADR-0008). Boolean dimensions are named `is_*` and the semantic API renders their filters as TRUE/FALSE.
+- 2026-10-13 — B3 slice 3: `cooling_degree_hours` on `fct_grid_hourly`; `revision_rate` divides revised values by values re-checked (read by at least two loads), not by all published hours, because history loaded in one pass can never show a revision. New incremental mart `fct_value_checks_hourly` (route × BA × item × hour) and shared view `int_eia__observations` (the three routes in one shape, also feeding `int_grid__revisions`).

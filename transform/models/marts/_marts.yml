@@ -146,6 +146,20 @@ models:
         expr: -1 * total_interchange_mwh
         config:
           meta: {agent: true, unit: MWh, additive: true, synonyms: [imports, interchange, power imported]}
+      - name: cooling_degree_hours
+        label: Cooling degree hours (°C·h)
+        description: >
+          How much air-conditioning weather the BA had: the sum over hours of
+          max(temperature - 18.3 °C, 0), using the BA's population-weighted temperature
+          (18.3 °C = 65 °F, the U.S. convention). Higher = hotter. Hours without a temperature
+          are skipped (NOAA publishes about 1.5 days after EIA). Summed across several BAs it
+          adds their totals; compare BAs by grouping by balancing_authority.
+          Synonyms: CDH, heat, cooling demand weather.
+        type: simple
+        agg: sum
+        expr: greatest(temperature_c - 18.3, 0)
+        config:
+          meta: {agent: true, unit: degC_hours, additive: true, synonyms: [CDH, heat, hot weather]}
       - name: demand_month_to_date
         label: Demand, month to date (MWh)
         description: Cumulative demand from the start of each month.
@@ -423,6 +437,109 @@ models:
           type: categorical
           name: is_complete
           description: True when every BA in the group reported demand for the hour.
+
+  - name: fct_value_checks_hourly
+    description: >
+      How often each published EIA value was read and whether it ever changed. Grain: route ×
+      BA × item × UTC hour (item = series, fuel or neighbour BA). Re-checked = seen by at least
+      two loads; revised = re-checked and had more than one version. The basis for
+      revision_rate.
+    semantic_model:
+      enabled: true
+      name: value_checks_hourly
+    primary_entity: value_check
+    agg_time_dimension: period_utc
+    metrics:
+      - name: values_rechecked
+        label: Values re-checked
+        description: Published values (BA × item × hour) read by at least two loads.
+        type: simple
+        agg: sum_boolean
+        expr: is_rechecked
+      - name: values_revised
+        label: Values revised
+        description: Re-checked values whose number changed at least once after first publication.
+        type: simple
+        agg: sum_boolean
+        expr: is_revised
+      - name: revision_rate
+        label: Revision rate (fraction)
+        description: >
+          Share of re-checked EIA values that the BA changed after first publishing them, as a
+          fraction from 0 to 1. Only values the pipeline read at least twice count (recent
+          hours are re-read for 30 days; older history loaded once can't show revisions).
+          Group by value_check__route (region-data, fuel-type-data, interchange-data) or
+          value_check__item_code (D = demand, DF = day-ahead forecast, NG, TI, a fuel code or a
+          neighbour BA) to see what gets revised. Synonyms: data revisions, corrections.
+        type: ratio
+        numerator: values_revised
+        denominator: values_rechecked
+        config:
+          meta:
+            agent: true
+            unit: fraction
+            additive: false
+            synonyms: [revisions, corrections, restatements, data changes]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [route, ba_code, item_code, period_utc]
+    columns:
+      - name: route
+        data_type: varchar
+        constraints:
+          - type: not_null
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["region-data", "fuel-type-data", "interchange-data"]
+        dimension:
+          type: categorical
+          name: route
+          description: EIA report - region-data (demand, forecast, NG, TI), fuel-type-data or interchange-data.
+      - name: ba_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+        entity:
+          type: foreign
+          name: balancing_authority
+      - name: item_code
+        data_type: varchar
+        description: Series code (D, DF, NG, TI), fuel code or neighbour BA code, depending on the route.
+        constraints:
+          - type: not_null
+        dimension:
+          type: categorical
+          name: item_code
+          description: >
+            What was published - D (demand), DF (day-ahead forecast), NG (net generation), TI
+            (total interchange), a fuel code (NG, COL, SUN, ...) or a neighbour BA code.
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The hour the value describes (UTC).
+        constraints:
+          - type: not_null
+        granularity: hour
+        dimension:
+          type: time
+          name: period_utc
+          description: The hour the value describes, UTC.
+      - name: loads
+        data_type: integer
+        description: Number of loads that read this value.
+      - name: versions
+        data_type: integer
+        description: Number of distinct versions (record hashes) seen.
+      - name: is_rechecked
+        data_type: boolean
+        description: Read by at least two loads.
+      - name: is_revised
+        data_type: boolean
+        description: Re-checked and changed at least once (A -> B -> A counts).
+      - name: last_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Latest load that read this value.
 
   - name: dim_fuel_type
     description: >
@@ -886,3 +1003,33 @@ unit_tests:
       rows: |
         ba_code,period_utc,demand_mwh,temperature_c,temperature_weight_coverage,last_ingested_at_utc
         PJM,2026-10-01 00:00:00,90000.0,18.5,1.0,2026-10-07 00:00:00
+
+  - name: value_checks_count_rereads_and_versions
+    description: >
+      One load = published, not re-checked. An unchanged re-read is re-checked, not revised.
+      A -> B -> A is revised. Two versions in a single load are not a revision.
+    model: fct_value_checks_hourly
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('int_eia__observations')
+        format: csv
+        rows: |
+          route,ba_code,item_code,period_utc,value_mwh,record_hash,ingested_at_utc
+          region-data,PJM,D,2026-10-01 00:00:00,100.0,a,2026-10-01 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,90.0,f,2026-10-01 02:00:00
+          region-data,PJM,DF,2026-10-01 00:00:00,90.0,f,2026-10-02 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,5.0,s1,2026-10-01 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,6.0,s2,2026-10-02 02:00:00
+          fuel-type-data,PJM,SUN,2026-10-01 00:00:00,5.0,s1,2026-10-03 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,1.0,i1,2026-10-01 02:00:00
+          interchange-data,PJM,MISO,2026-10-01 00:00:00,2.0,i2,2026-10-01 02:00:00
+    expect:
+      format: csv
+      rows: |
+        route,ba_code,item_code,period_utc,loads,versions,is_rechecked,is_revised,last_ingested_at_utc
+        region-data,PJM,D,2026-10-01 00:00:00,1,1,false,false,2026-10-01 02:00:00
+        region-data,PJM,DF,2026-10-01 00:00:00,2,1,true,false,2026-10-02 02:00:00
+        fuel-type-data,PJM,SUN,2026-10-01 00:00:00,3,2,true,true,2026-10-03 02:00:00
+        interchange-data,PJM,MISO,2026-10-01 00:00:00,1,2,false,false,2026-10-01 02:00:00
