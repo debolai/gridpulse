@@ -202,7 +202,7 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 | Marts | `fct_grid_hourly` | BA × hour | Demand, forecast, net generation, interchange, temperature, quality flags, UTC and local time |
 | Marts | `fct_generation_by_fuel_hourly` | BA × fuel × hour | Generation by fuel |
 | Marts | `fct_interchange_hourly` | BA × neighbor BA × hour | Directional flows |
-| Marts | `fct_data_revisions` | Revision event | Audit of what changed, when, and by how much |
+| Marts | `fct_data_revisions` | Revision event | Audit of what changed, when, and by how much, across all three EIA routes |
 | Marts | `fct_ingestion_runs` | Pipeline run | Expected versus received rows and run duration, from manifests |
 | Snapshots | `snap_ba_reference` | BA × validity range | SCD Type 2 history of BA attributes |
 
@@ -544,3 +544,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — Agent: temporary, local-only OpenAI API provider while Bedrock is blocked account-wide (ADR-0003, revert checklist inside). API-key providers refuse to start in Kubernetes. Added gitleaks secret scanning to pre-commit and CI.
 - 2026-10-13 — B1: fuel-type and interchange routes, `fct_generation_by_fuel_hourly`, `fct_interchange_hourly` (non-U.S. neighbours kept and flagged), reconciliation tests with a per-BA pass rate and a documented-exceptions seed (PJM interchange).
 - 2026-10-13 — Quality flags: per-series `quality_status` on `fct_grid_hourly` instead of one row-level status; spike = one-hour outlier against both adjacent hours (var `spike_threshold`, 0.5).
+- 2026-10-13 — Revision audit covers all three EIA routes (item = series, fuel or neighbour BA), with revision_type changed/filled/removed and hours_after_period.

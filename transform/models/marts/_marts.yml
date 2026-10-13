@@ -431,6 +431,66 @@ models:
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: The load that last changed this value.
 
+  - name: fct_data_revisions
+    description: >
+      Audit of EIA revisions: one row per change to a published value, with its size and how
+      late it came. Grain: route × BA × item × hour × revising load. item_code is the series
+      (region-data: D, DF, NG, TI), the fuel (fuel-type-data) or the neighbour BA
+      (interchange-data). Answers "how much does a BA revise its data, and how late?".
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [route, ba_code, item_code, period_utc, revised_at_utc]
+    columns:
+      - name: route
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: ba_code
+        data_type: varchar
+        constraints:
+          - type: not_null
+      - name: item_code
+        data_type: varchar
+        description: Series code, fuel code or neighbour BA code, depending on the route.
+        constraints:
+          - type: not_null
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The hour that was revised (UTC).
+        constraints:
+          - type: not_null
+      - name: revision_type
+        data_type: varchar
+        description: changed, filled (null to a value) or removed (a value to null).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["changed", "filled", "removed"]
+      - name: previous_value_mwh
+        data_type: double
+      - name: revised_value_mwh
+        data_type: double
+      - name: change_mwh
+        data_type: double
+        description: revised minus previous; null for filled and removed.
+      - name: change_ratio
+        data_type: double
+        description: change_mwh as a fraction of the previous absolute value (0.05 = +5%).
+      - name: previous_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the load that had observed the previous value.
+      - name: revised_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the load that first observed the revised value.
+        constraints:
+          - type: not_null
+      - name: hours_after_period
+        data_type: integer
+        description: >
+          Hours between the start of the revised hour and the load that saw the change. An
+          upper bound on how late EIA revised it: loads only run every so often.
+
 unit_tests:
   - name: local_time_handles_dst_and_arizona
     description: >
