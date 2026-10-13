@@ -1,0 +1,362 @@
+[
+ {
+  "code": "CPLE",
+  "name": "Duke Energy Progress East",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "HST",
+  "name": "City of Homestead",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "PNM",
+  "name": "Public Service Company of New Mexico",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "PSEI",
+  "name": "Puget Sound Energy, Inc.",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "BHBA",
+  "name": "Black Hills Energy",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "DUK",
+  "name": "Duke Energy Carolinas",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "TIDC",
+  "name": "Turlock Irrigation District",
+  "region": "CAL",
+  "region_name": "California"
+ },
+ {
+  "code": "TPWR",
+  "name": "City of Tacoma, Department of Public Utilities, Light Division",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "CPLW",
+  "name": "Duke Energy Progress West",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "GRID",
+  "name": "Gridforce Energy Management, LLC",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "YAD",
+  "name": "Alcoa Power Generating, Inc. - Yadkin Division",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "DEAA",
+  "name": "Arlington Valley, LLC",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "DOPD",
+  "name": "PUD No. 1 of Douglas County",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "PSCO",
+  "name": "Public Service Company of Colorado",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "GWA",
+  "name": "NaturEner Power Watch, LLC",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "SOCO",
+  "name": "Southern Company Services, Inc. - Trans",
+  "region": "SE",
+  "region_name": "Southeast"
+ },
+ {
+  "code": "WALC",
+  "name": "Western Area Power Administration - Desert Southwest Region",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "FMPP",
+  "name": "Florida Municipal Power Pool",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "PGE",
+  "name": "Portland General Electric Company",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "SRP",
+  "name": "Salt River Project Agricultural Improvement and Power District",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "TVA",
+  "name": "Tennessee Valley Authority",
+  "region": "TEN",
+  "region_name": "Tennessee"
+ },
+ {
+  "code": "AECI",
+  "name": "Associated Electric Cooperative, Inc.",
+  "region": "MIDW",
+  "region_name": "Midwest"
+ },
+ {
+  "code": "BANC",
+  "name": "Balancing Authority of Northern California",
+  "region": "CAL",
+  "region_name": "California"
+ },
+ {
+  "code": "CHPD",
+  "name": "Public Utility District No. 1 of Chelan County",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "CISO",
+  "name": "California Independent System Operator",
+  "region": "CAL",
+  "region_name": "California"
+ },
+ {
+  "code": "FPL",
+  "name": "Florida Power & Light Co.",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "IPCO",
+  "name": "Idaho Power Company",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "LDWP",
+  "name": "Los Angeles Department of Water and Power",
+  "region": "CAL",
+  "region_name": "California"
+ },
+ {
+  "code": "LGEE",
+  "name": "Louisville Gas and Electric Company and Kentucky Utilities Company",
+  "region": "MIDW",
+  "region_name": "Midwest"
+ },
+ {
+  "code": "NWMT",
+  "name": "NorthWestern Corporation",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "PJM",
+  "name": "PJM Interconnection, LLC",
+  "region": "MIDA",
+  "region_name": "Mid-Atlantic"
+ },
+ {
+  "code": "SPA",
+  "name": "Southwestern Power Administration",
+  "region": "CENT",
+  "region_name": "Central"
+ },
+ {
+  "code": "TEC",
+  "name": "Tampa Electric Company",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "FPC",
+  "name": "Duke Energy Florida, Inc.",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "NEVP",
+  "name": "Nevada Power Company",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "AZPS",
+  "name": "Arizona Public Service Company",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "ERCO",
+  "name": "Electric Reliability Council of Texas, Inc.",
+  "region": "TEX",
+  "region_name": "Texas"
+ },
+ {
+  "code": "SEPA",
+  "name": "Southeastern Power Administration",
+  "region": "SE",
+  "region_name": "Southeast"
+ },
+ {
+  "code": "AVRN",
+  "name": "Avangrid Renewables, LLC",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "GVL",
+  "name": "Gainesville Regional Utilities",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "NYIS",
+  "name": "New York Independent System Operator",
+  "region": "NY",
+  "region_name": "New York"
+ },
+ {
+  "code": "PACW",
+  "name": "PacifiCorp West",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "SCEG",
+  "name": "Dominion Energy South Carolina, Inc.",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "SCL",
+  "name": "Seattle City Light",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "IID",
+  "name": "Imperial Irrigation District",
+  "region": "CAL",
+  "region_name": "California"
+ },
+ {
+  "code": "SIKE",
+  "name": "Sikeston Board Of Municipal Utilities",
+  "region": "MIDW",
+  "region_name": "Midwest"
+ },
+ {
+  "code": "BPAT",
+  "name": "Bonneville Power Administration",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "SEC",
+  "name": "Seminole Electric Cooperative",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "TAL",
+  "name": "City of Tallahassee",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "TEPC",
+  "name": "Tucson Electric Power",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "GCPD",
+  "name": "Public Utility District No. 2 of Grant County, Washington",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "JEA",
+  "name": "JEA",
+  "region": "FLA",
+  "region_name": "Florida"
+ },
+ {
+  "code": "PACE",
+  "name": "PacifiCorp East",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "AVA",
+  "name": "Avista Corporation",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "EPE",
+  "name": "El Paso Electric Company",
+  "region": "SW",
+  "region_name": "Southwest"
+ },
+ {
+  "code": "ISNE",
+  "name": "ISO New England",
+  "region": "NE",
+  "region_name": "New England"
+ },
+ {
+  "code": "SWPW",
+  "name": "Southwest Power Pool West Balancing Authority Area",
+  "region": "NW",
+  "region_name": "Northwest"
+ },
+ {
+  "code": "MISO",
+  "name": "Midcontinent Independent System Operator, Inc.",
+  "region": "MIDW",
+  "region_name": "Midwest"
+ },
+ {
+  "code": "SC",
+  "name": "South Carolina Public Service Authority",
+  "region": "CAR",
+  "region_name": "Carolinas"
+ },
+ {
+  "code": "SWPP",
+  "name": "Southwest Power Pool",
+  "region": "CENT",
+  "region_name": "Central"
+ }
+]

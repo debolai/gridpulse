@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -39,12 +39,18 @@ class ScriptedBrain:
         self.plan_calls: list[dict] = []
         self.answer_calls: list[list[str]] = []
 
-    def route(self, question):
+    def route(self, question, history=()):
         return RouteDecision(route=self._route, reason="scripted")
 
-    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
+    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=(), history=()):
         self.plan_calls.append(
-            {"errors": list(errors), "previous": previous, "saved_queries": list(saved_queries)}
+            {
+                "question": question,
+                "history": list(history),
+                "errors": list(errors),
+                "previous": previous,
+                "saved_queries": list(saved_queries),
+            }
         )
         return self.plans.pop(0)
 
@@ -56,12 +62,40 @@ class ScriptedBrain:
         return self.definition
 
 
+# Coverage and freshness the fake reports unless a test says otherwise: complete data, loaded
+# up to the pinned "today", so windows in September 2026 are older than the revision window.
+FULL_COVERAGE = [["PJM", 720, 720]]
+LATEST_HOUR = datetime(2026, 10, 12, 9)
+
+
 class FakeSemantic:
-    def __init__(self, catalog, results=(), reject_first: str | None = None):
+    def __init__(
+        self,
+        catalog,
+        results=(),
+        reject_first: str | None = None,
+        coverage=FULL_COVERAGE,
+        latest_hour=LATEST_HOUR,
+    ):
         self._catalog = catalog
         self.results = list(results)
         self.reject_first = reject_first
         self.queries: list[MetricRequest] = []
+        self._coverage = coverage
+        self._latest = latest_hour
+        self.coverage_requests: list[MetricRequest] = []
+
+    def coverage(self, request):
+        self.coverage_requests.append(request)
+        if isinstance(self._coverage, Exception):
+            raise self._coverage
+        return self._coverage
+
+    def latest_hour(self):
+        return self._latest
+
+    def ba_regions(self):
+        return json.loads((FIXTURES / "ba_regions.json").read_text())
 
     def catalog(self):
         return self._catalog

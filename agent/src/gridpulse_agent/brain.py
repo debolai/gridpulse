@@ -9,11 +9,11 @@ from langchain_core.language_models import BaseChatModel
 
 from gridpulse_agent import prompts
 from gridpulse_agent.config import AgentSettings
-from gridpulse_agent.contract import MetricRequest, RouteDecision
+from gridpulse_agent.contract import MetricRequest, PlannedRequest, RouteDecision
 
 
 class Brain(Protocol):
-    def route(self, question: str) -> RouteDecision: ...
+    def route(self, question: str, history: list[dict] = ()) -> RouteDecision: ...
 
     def plan(
         self,
@@ -24,7 +24,8 @@ class Brain(Protocol):
         errors: list[str],
         previous: MetricRequest | None,
         saved_queries: list[dict] = (),
-    ) -> MetricRequest: ...
+        history: list[dict] = (),
+    ) -> PlannedRequest | MetricRequest: ...
 
     def answer(
         self,
@@ -63,7 +64,7 @@ def chat_model(settings: AgentSettings, model_id: str) -> BaseChatModel:
 class LLMBrain:
     def __init__(self, router: BaseChatModel, planner: BaseChatModel) -> None:
         self._router = router.with_structured_output(RouteDecision)
-        self._planner = planner.with_structured_output(MetricRequest)
+        self._planner = planner.with_structured_output(PlannedRequest)
         self._writer = planner
 
     @classmethod
@@ -71,10 +72,12 @@ class LLMBrain:
         router_id, planner_id = settings.models()
         return cls(chat_model(settings, router_id), chat_model(settings, planner_id))
 
-    def route(self, question):
-        return self._router.invoke(prompts.ROUTER.format(question=question))
+    def route(self, question, history=()):
+        return self._router.invoke(
+            prompts.ROUTER.format(question=question, history=prompts.history_text(history))
+        )
 
-    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
+    def plan(self, question, catalog, bas, today, errors, previous, saved_queries=(), history=()):
         feedback = (
             prompts.PLAN_FEEDBACK.format(
                 errors="\n".join(f"- {e}" for e in errors),
@@ -89,6 +92,7 @@ class LLMBrain:
                 bas="\n".join(f"{code}: {name}" for code, name in bas),
                 catalog=prompts.catalog_json(catalog),
                 saved_queries=prompts.saved_queries_text(saved_queries),
+                history=prompts.history_text(history, with_requests=True),
                 feedback=feedback,
                 question=question,
             )

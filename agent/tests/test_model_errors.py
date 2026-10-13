@@ -1,3 +1,6 @@
+import json
+from types import SimpleNamespace
+
 import anthropic
 import httpx
 import openai
@@ -58,7 +61,10 @@ class Raising:
     def __init__(self, exc):
         self.exc = exc
 
-    def invoke(self, _state):
+    def get_state(self, _config):
+        return SimpleNamespace(interrupts=())  # no clarifying question pending
+
+    def stream(self, _payload, _config=None, **_kwargs):
         raise self.exc
 
 
@@ -98,3 +104,15 @@ def test_unreachable_semantic_api_returns_503(client):
 def test_other_httpx_and_unknown_errors_stay_500(client):
     assert ask(client(httpx.ConnectError("refused", request=REQ))).status_code == 500
     assert ask(client(ValueError("bug"))).status_code == 500
+
+
+def test_stream_turns_an_outage_into_an_error_event(client):
+    resp = client(bedrock("ThrottlingException")).post(
+        "/ask/stream", json={"question": "PJM demand in July 2026?"}
+    )
+    assert resp.status_code == 200 and resp.headers["content-type"].startswith("text/event-stream")
+    (event,) = [
+        json.loads(line[6:]) for line in resp.text.splitlines() if line.startswith("data: ")
+    ]
+    assert event["type"] == "error" and event["status"] == "model_throttled"
+    assert event["retry_after_s"] == 60

@@ -17,6 +17,9 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "streamlit",
+    "langgraph-checkpoint-postgres",  # conversation memory (B4)
+    "psycopg[binary]",
+    "psycopg-pool",
 ]
 
 [project.scripts]

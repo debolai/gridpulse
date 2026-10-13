@@ -409,3 +409,45 @@ def test_cache_refresh_invalidates_results(api):
     version = api.post("/cache/refresh").json()["data_version"]
     after = api.post("/query", json=body).json()
     assert after["cached"] is False and after["data_version"] == version
+
+
+def test_agent_inspection_queries_match_sql(api, sql):
+    """The agent's coverage and freshness checks, through the real API, equal hand SQL."""
+    from gridpulse_agent.contract import MetricRequest
+    from gridpulse_agent.semantic_client import SemanticClient
+
+    client = SemanticClient("http://testserver", http=api)
+    request = MetricRequest.model_validate(
+        {
+            "metrics": ["coincident_peak_demand"],
+            "filters": [{"dimension": "demand_scope__scope_code", "values": ["Eastern"]}],
+            "start": START.isoformat(),
+            "end": END.isoformat(),
+        }
+    )
+    expected = sql(
+        f"""SELECT c.ba_code, count_if(g.demand_quality_status = 'ok')
+        FROM marts.fct_grid_coverage_hourly c
+        JOIN marts.dim_balancing_authority b ON b.ba_code = c.ba_code
+        LEFT JOIN marts.fct_grid_hourly g ON g.ba_code = c.ba_code AND g.period_utc = c.period_utc
+        WHERE {WINDOW_SQL.replace("period_utc", "c.period_utc")} AND b.interconnection = 'Eastern'
+        GROUP BY 1"""
+    )
+    rows = client.coverage(request)
+    assert {ba: valid for ba, valid, _ in rows} == expected
+    latest = sql(
+        "SELECT 1, max(period_utc) FROM marts.fct_grid_hourly WHERE demand_mwh IS NOT NULL"
+    )
+    assert client.latest_hour() == latest[1]
+
+
+def test_agent_region_lookup_lists_every_active_ba(api, sql):
+    """The clarify rule's BA -> region list covers the whole reference, not just BAs with data."""
+    from gridpulse_agent.semantic_client import SemanticClient
+
+    got = {b["code"]: b["region"] for b in SemanticClient("http://t", http=api).ba_regions()}
+    expected = sql(
+        "SELECT ba_code, region_code FROM marts.dim_balancing_authority "
+        "WHERE retirement_date IS NULL"
+    )
+    assert got == expected and len(got) > 50

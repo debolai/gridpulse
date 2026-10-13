@@ -1,23 +1,30 @@
 """HTTP front door for the assistant.
 
 GET  /health
-POST /ask   {"question": "..."} -> answer, status, metric request, SQL, rows
+POST /ask   {"question": "...", "thread_id": optional} -> answer, status, metric request, SQL,
+            rows, thread_id. status "needs_clarification" means the answer is a question: send
+            the user's reply as the next question with the same thread_id.
+POST /ask/stream   same body; Server-Sent Events: {"type": "step", "node": ...} per graph
+            step, then {"type": "result", ...} (as /ask), or {"type": "error", ...} (as a 503).
 """
 
 import hmac
+import json
 import logging
 import os
+from collections.abc import Iterator
 from functools import lru_cache
 
 import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from gridpulse_agent.brain import LLMBrain
 from gridpulse_agent.config import AgentSettings
-from gridpulse_agent.graph import ask, build_graph
+from gridpulse_agent.graph import ask, ask_stream, build_graph
+from gridpulse_agent.memory import checkpointer
 from gridpulse_agent.model_errors import classify
 from gridpulse_agent.semantic_client import SemanticClient
 
@@ -33,7 +40,8 @@ def settings() -> AgentSettings:
 @lru_cache(maxsize=1)
 def graph():
     s = settings()
-    return build_graph(LLMBrain.from_settings(s), SemanticClient(s.semantic_api_url), s)
+    brain, semantic = LLMBrain.from_settings(s), SemanticClient(s.semantic_api_url)
+    return build_graph(brain, semantic, s, checkpointer(s))
 
 
 def authorize(authorization: str | None = Header(default=None)) -> None:
@@ -46,7 +54,8 @@ def authorize(authorization: str | None = Header(default=None)) -> None:
 
 
 class Question(BaseModel):
-    question: str = Field(min_length=3, max_length=500)
+    question: str = Field(min_length=2, max_length=500)  # 2: a reply can be a BA code ("PJM")
+    thread_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @app.get("/health")
@@ -61,42 +70,67 @@ def health() -> dict:
     }
 
 
-def unavailable(status: str, message: str, detail: str, retry_after_s: int | None) -> JSONResponse:
-    """503 with a message the UI can show as is; never a raw stack trace."""
-    headers = {"Retry-After": str(retry_after_s)} if retry_after_s else None
-    body = {"status": status, "message": message, "detail": detail}
-    return JSONResponse(status_code=503, content=body, headers=headers)
-
-
-@app.post("/ask", dependencies=[Depends(authorize)])
-def ask_endpoint(body: Question):
-    try:
-        return ask(graph(), body.question)
-    except httpx.HTTPError as exc:
+def unavailable(exc: Exception) -> tuple[dict, int | None] | None:
+    """(body, retry-after seconds) for an outage the user should hear about plainly: the
+    semantic API unreachable or the model provider failing. None for anything else (a bug)."""
+    if isinstance(exc, httpx.HTTPError):
         try:
             url = str(exc.request.url)
         except RuntimeError:  # httpx raises when the error carries no request
             url = ""
         if not url.startswith(settings().semantic_api_url):
-            raise
+            return None
         log.warning("semantic API unavailable: %r", exc)
-        return unavailable(
-            "metrics_unavailable",
-            "The metrics API is not reachable right now. Try again shortly.",
-            type(exc).__name__,
-            30,
-        )
+        body = {
+            "status": "metrics_unavailable",
+            "message": "The metrics API is not reachable right now. Try again shortly.",
+            "detail": type(exc).__name__,
+        }
+        return body, 30
+    problem = classify(exc)
+    if problem is None:
+        return None
+    log.warning("model provider unavailable (%s): %s", problem.reason, problem.provider_error)
+    body = {
+        "status": f"model_{problem.reason}",
+        "message": problem.message,
+        "detail": problem.provider_error,
+    }
+    return body, problem.retry_after_s
+
+
+@app.post("/ask", dependencies=[Depends(authorize)])
+def ask_endpoint(body: Question):
+    try:
+        return ask(graph(), body.question, thread_id=body.thread_id)
     except Exception as exc:
-        problem = classify(exc)
-        if problem is None:
+        outage = unavailable(exc)
+        if outage is None:
             raise
-        log.warning("model provider unavailable (%s): %s", problem.reason, problem.provider_error)
-        return unavailable(
-            f"model_{problem.reason}",
-            problem.message,
-            problem.provider_error,
-            problem.retry_after_s,
-        )
+        content, retry_after_s = outage
+        headers = {"Retry-After": str(retry_after_s)} if retry_after_s else None
+        return JSONResponse(status_code=503, content=content, headers=headers)
+
+
+@app.post("/ask/stream", dependencies=[Depends(authorize)])
+def ask_stream_endpoint(body: Question) -> StreamingResponse:
+    def events() -> Iterator[str]:
+        try:
+            for event in ask_stream(graph(), body.question, thread_id=body.thread_id):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            outage = unavailable(exc)
+            if outage is None:
+                log.exception("ask/stream failed")
+                outage = (
+                    {"status": "error", "message": "Something went wrong.", "detail": ""},
+                    None,
+                )
+            content, retry_after_s = outage
+            event = {"type": "error", **content, "retry_after_s": retry_after_s}
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 def main() -> None:

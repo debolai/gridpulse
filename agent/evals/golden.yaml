@@ -190,10 +190,241 @@ cases:
       end: 2026-11-01
       end_tolerance_days: 20  # the whole month, or through today (2026-10-12): both read right
 
+  # B4: remaining metrics, saved queries, clarification, follow-ups
+  - id: net-generation-one-ba
+    question: How much electricity did PJM's own plants generate (net) in August 2026?
+    expect:
+      metrics: [net_generation]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: renewable-generation-one-ba
+    question: How much renewable generation did ERCOT have in total in July 2026?
+    expect:
+      metrics: [renewable_generation]
+      filters: [{dimension: balancing_authority, values: [ERCO]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: renewable-share-ranking
+    question: Which balancing authority had the highest renewable share in September 2026?
+    expect:
+      metrics: [renewable_share]
+      group_by: [balancing_authority]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: coincident-peak-interconnection
+    question: What was the combined system peak of the Eastern interconnection in July 2026?
+    expect:
+      metrics: [coincident_peak_demand]
+      filters: [{dimension: demand_scope__scope_code, values: [Eastern]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: net-exporters-ranking
+    question: Which balancing authorities were net exporters of electricity in July 2026?
+    expect:
+      metrics: [net_imports]
+      group_by: [balancing_authority]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: cooling-degree-hours-daily
+    question: Show ERCOT's daily cooling degree hours for the first two weeks of August 2026.
+    expect:
+      metrics: [cooling_degree_hours]
+      group_by: [metric_time__day]
+      filters: [{dimension: balancing_authority, values: [ERCO]}]
+      start: 2026-08-01
+      end: 2026-08-15
+
+  - id: flagged-values-one-ba
+    question: Were there any bad data values for MISO in September 2026?
+    expect:
+      metrics: [flagged_values]
+      filters: [{dimension: balancing_authority, values: [MISO]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: revision-rate-one-ba
+    question: What share of PJM's published values were revised in October 2026?
+    expect:
+      metrics: [revision_rate]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-10-01
+      end: 2026-11-01
+      end_tolerance_days: 20  # the whole month, or through today (2026-10-12)
+
+  - id: completeness-one-interconnection
+    question: How complete was the demand data in the Eastern interconnection in August 2026?
+    expect:
+      metrics: [data_completeness]
+      filters: [{dimension: balancing_authority__interconnection, values: [Eastern]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: forecast-error-monthly-trend
+    question: How did NYISO's day-ahead forecast error change month by month from July to September 2026?
+    expect:
+      metrics: [forecast_error_mape]
+      group_by: [metric_time__month]
+      filters: [{dimension: balancing_authority, values: [NYIS]}]
+      start: 2026-07-01
+      end: 2026-10-01
+
+  - id: weekly-demand
+    question: Show ISNE's weekly demand during September 2026.
+    expect:
+      metrics: [demand]
+      group_by: [metric_time__week]
+      filters: [{dimension: balancing_authority, values: [ISNE]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  - id: saved-daily-demand-by-ba
+    question: Show each balancing authority's daily demand and daily peak for September 1-7, 2026.
+    expect:
+      metrics: [demand, peak_demand]
+      group_by: [balancing_authority, metric_time__day]
+      start: 2026-09-01
+      end: 2026-09-08
+
+  - id: saved-forecast-accuracy-by-ba
+    question: Compare forecast error and forecast bias across all balancing authorities for August 2026.
+    expect:
+      metrics: [forecast_error_mape, forecast_bias]
+      group_by: [balancing_authority]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: saved-fuel-mix-by-ba
+    question: What was the generation mix by fuel category for every balancing authority in July 2026?
+    expect:
+      metrics: [generation_by_fuel]
+      group_by: [balancing_authority, fuel_type__fuel_category]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: saved-monthly-system-peaks
+    question: Show the Texas region's system peak for each month from July to September 2026.
+    expect:
+      metrics: [coincident_peak_demand]
+      group_by: [metric_time__month]
+      filters: [{dimension: demand_scope__scope_code, values: [TEX]}]
+      start: 2026-07-01
+      end: 2026-10-01
+
+  - id: saved-data-quality-by-ba
+    question: >-
+      For each balancing authority, how complete was the data and how many values were
+      flagged in September 2026?
+    expect:
+      metrics: [data_completeness, flagged_values]
+      group_by: [balancing_authority]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  # Ambiguous: a region with several BAs, and nothing says which reading. Must ask.
+  - id: clarify-california-demand
+    question: What was California's total demand in August 2026?
+    clarify: true
+
+  - id: clarify-florida-peak
+    question: What was Florida's peak demand last month?
+    clarify: true
+
+  - id: clarify-carolinas-demand
+    question: What was total demand in the Carolinas in July 2026?
+    clarify: true
+
+  # Not ambiguous: the question itself says which reading. Must not ask.
+  - id: no-clarify-whole-region
+    question: What was the combined peak of the whole California region in August 2026?
+    expect:
+      metrics: [coincident_peak_demand]
+      filters: [{dimension: demand_scope__scope_code, values: [CAL]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: no-clarify-entire-region-demand
+    question: What was total demand for the entire Florida region in July 2026?
+    expect:
+      metrics: [demand]
+      filters: [{dimension: balancing_authority__region, values: [FLA]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: no-clarify-breakdown
+    question: Which balancing authority in the California region had the highest demand in September 2026?
+    expect:
+      metrics: [demand]
+      group_by: [balancing_authority]
+      filters: [{dimension: balancing_authority__region, values: [CAL]}]
+      start: 2026-09-01
+      end: 2026-10-01
+
+  # Follow-ups: asked in the same conversation, right after the `after` case.
+  - id: follow-up-other-month
+    after: total-demand-one-ba-month
+    question: And in August?
+    expect:
+      metrics: [demand]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: follow-up-same-ranking-other-month
+    after: highest-peak-by-ba
+    question: What about August 2026?
+    expect:
+      metrics: [peak_demand]
+      group_by: [balancing_authority]
+      start: 2026-08-01
+      end: 2026-09-01
+
+  - id: follow-up-by-month
+    after: renewable-share-one-ba
+    question: Now show it month by month from July to September.
+    expect:
+      metrics: [renewable_share]
+      group_by: [metric_time__month]
+      filters: [{dimension: balancing_authority, values: [CISO]}]
+      start: 2026-07-01
+      end: 2026-10-01
+
+  - id: follow-up-other-scope
+    after: system-peak-lower-48
+    question: And for the Western interconnection?
+    expect:
+      metrics: [coincident_peak_demand]
+      filters: [{dimension: demand_scope__scope_code, values: [Western]}]
+      start: 2026-07-01
+      end: 2026-08-01
+
+  - id: follow-up-other-ba
+    after: daily-series
+    question: Now the same for PJM.
+    expect:
+      metrics: [demand]
+      group_by: [metric_time__day]
+      filters: [{dimension: balancing_authority, values: [PJM]}]
+      start: 2026-08-01
+      end: 2026-08-08
+
   - id: definition-route
     question: What does the forecast error metric measure and how is it calculated?
     route: definition
 
   - id: out-of-scope-route
     question: What was the wholesale electricity price in PJM yesterday?
+    route: out_of_scope
+
+  - id: definition-peak-vs-coincident
+    question: What's the difference between peak demand and coincident peak demand?
+    route: definition
+
+  - id: out-of-scope-weather-forecast
+    question: Will it be hot in Texas next week?
     route: out_of_scope

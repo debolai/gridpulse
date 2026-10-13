@@ -1,10 +1,12 @@
 """HTTP client for the semantic API: the agent's only source of numbers."""
 
 import time
+from datetime import datetime
 
 import httpx
 
 from gridpulse_agent.contract import MetricRequest
+from gridpulse_agent.inspection import coverage_request
 
 
 class SemanticAPIError(RuntimeError):
@@ -48,6 +50,26 @@ class SemanticClient:
 
         return self._cached("saved", load)
 
+    def ba_regions(self) -> list[dict]:
+        """Every active BA in EIA's reference (with or without data) and its region."""
+
+        def load():
+            dims = ["balancing_authority__ba_name", "balancing_authority__region"]
+            body = {
+                "metrics": ["active_balancing_authorities"],
+                "group_by": ["balancing_authority", *dims, "balancing_authority__region_name"],
+                "limit": 500,
+            }
+            resp = self._http.post("/query", json=body)
+            resp.raise_for_status()
+            return [
+                {"code": code, "name": name, "region": region, "region_name": region_name}
+                for code, name, region, region_name, active in resp.json()["rows"]
+                if active
+            ]
+
+        return self._cached("ba_regions", load)
+
     def balancing_authorities(self) -> list[tuple[str, str]]:
         """(code, name) for every BA with data, so the planner can map names to codes."""
 
@@ -62,6 +84,27 @@ class SemanticClient:
             return sorted((row[0], row[1]) for row in resp.json()["rows"])
 
         return self._cached("bas", load)
+
+    def coverage(self, request: MetricRequest) -> list[list]:
+        """[ba_code, valid demand hours, expected hours] for the request's BAs and window."""
+        return self.query(coverage_request(request))["rows"]
+
+    def latest_hour(self) -> datetime | None:
+        """The latest hour with demand anywhere (where the coverage spine ends)."""
+
+        def load():
+            body = {
+                "metrics": ["expected_hours"],
+                "group_by": ["metric_time__hour"],
+                "order_by": ["-metric_time__hour"],
+                "limit": 1,
+            }
+            resp = self._http.post("/query", json=body)
+            resp.raise_for_status()
+            rows = resp.json()["rows"]
+            return datetime.fromisoformat(rows[0][0]) if rows else None
+
+        return self._cached("latest", load)
 
     def query(self, request: MetricRequest) -> dict:
         resp = self._http.post("/query", json=request.model_dump(mode="json"))
