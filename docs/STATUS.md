@@ -11,8 +11,8 @@ Repo: https://github.com/debolai/gridpulse
 - Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange ✅, (3) quality flags ✅, (4) revision audit ✅, (5) NOAA weather ✅, (6) BA snapshot + ingestion-run facts ✅. Done-when met on both engines; Elementary still open. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. Open the B1 PR (branch `feat/b1-data-coverage`, 6 commits), CI green, merge
-2. Decide on Elementary (B1 or B6), then B2 (orchestration on k3d: Airflow 3 via Helm, the B1 routes and NOAA as DAGs, the eia_api pool, full backfill)
+1. Merge B1 PR #2 (https://github.com/debolai/gridpulse/pull/2; CI green, awaiting the owner's go-ahead)
+2. Decide on Elementary (B1 or B6; recommendation: B6), then B2 (orchestration on k3d: Airflow 3 via Helm, the B1 routes and NOAA as DAGs, the eia_api pool, full backfill)
 3. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
@@ -134,3 +134,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — B1 slice 4 (revision audit) done on both engines: 7 real ISNE forecast revisions found from a re-pull; incremental path unit-tested. Next: slice 5 (NOAA weather).
 - 2026-10-13 — B1 slice 5 (weather) done on both engines with NOAA GHCNh (ISD retired, ADR-0004). Next: slice 6 (snapshot + ingestion runs).
 - 2026-10-13 — B1 slice 6 (BA snapshot, ingestion-run facts) done on both engines; B1 done-when met (Elementary open). Next: B1 PR.
+- 2026-10-13 — Session closed. PR #2 (B1) open with CI green, not merged. Everything shut down and verified: no local containers or processes; on AWS no EKS, EC2, NAT, EIP, RDS or load balancers (only the foundation: S3, Glue, Athena workgroups, ECR, budgets). Open decisions: merge PR #2; Elementary in B1 or B6.
