@@ -1,5 +1,5 @@
--- Current attributes per balancing authority. In B1 this is rebuilt from the
--- snap_ba_reference snapshot (SCD Type 2); for now it reads the seed directly.
+-- Current attributes per balancing authority: the open version of each BA in the
+-- snap_ba_reference snapshot (SCD Type 2). Full history stays in the snapshot.
 
 select
     ba_code,
@@ -13,4 +13,5 @@ select
     is_active,
     activation_date,
     retirement_date
-from {{ ref('ba_reference') }}
+from {{ ref('snap_ba_reference') }}
+where dbt_valid_to is null

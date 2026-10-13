@@ -59,6 +59,10 @@ class FakeSink:
         self.appended.extend(records)
         return len(records)
 
+    def append_runs(self, records) -> int:
+        self.runs = getattr(self, "runs", []) + list(records)
+        return len(records)
+
     def append_noaa(self, records) -> int:
         return self.append("noaa-ghcnh", records)
 

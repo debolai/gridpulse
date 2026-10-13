@@ -48,6 +48,10 @@ seeds:
         is_renewable: boolean
         is_storage: boolean
 
+snapshots:
+  gridpulse:
+    +table_type: iceberg
+
 models:
   gridpulse:
     # Athena: every table is Iceberg (Trino's catalog is Iceberg-only, so it ignores this).

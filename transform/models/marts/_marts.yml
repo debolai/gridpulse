@@ -499,6 +499,65 @@ models:
           Hours between the start of the revised hour and the load that saw the change. An
           upper bound on how late EIA revised it: loads only run every so often.
 
+  - name: fct_ingestion_runs
+    description: >
+      One row per extraction attempt across all sources (EIA routes, NOAA): window, rows
+      expected, received and appended, duration, and errors. Feeds pipeline-health views
+      and the freshness story.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [run_id, started_at_utc]
+    columns:
+      - name: run_id
+        data_type: varchar
+        description: Deterministic id from route, window and scope (a rerun of the same window shares it).
+        constraints:
+          - type: not_null
+      - name: route
+        data_type: varchar
+        description: region-data, fuel-type-data, interchange-data or noaa-ghcnh.
+        constraints:
+          - type: not_null
+      - name: started_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        constraints:
+          - type: not_null
+      - name: status
+        data_type: varchar
+        description: succeeded, failed, or running (the process died before finishing).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["succeeded", "failed", "running"]
+      - name: window_start_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+      - name: window_end_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Exclusive end of the requested window.
+      - name: scope
+        data_type: varchar
+        description: JSON list of the BAs (EIA) or stations (NOAA) requested; [] = all BAs.
+      - name: pages
+        data_type: bigint
+      - name: rows_expected
+        data_type: bigint
+        description: The total the EIA API reported; null for NOAA.
+      - name: rows_received
+        data_type: bigint
+      - name: rows_appended
+        data_type: bigint
+      - name: is_complete
+        data_type: boolean
+        description: Succeeded, received every expected row, and appended everything it received.
+      - name: duration_seconds
+        data_type: double
+      - name: error
+        data_type: varchar
+      - name: details
+        data_type: varchar
+        description: Other manifest fields as JSON (API warnings, unknown fields, missing stations).
+
 unit_tests:
   - name: local_time_handles_dst_and_arizona
     description: >

@@ -13,7 +13,7 @@ from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.schema import Schema
 from pyiceberg.table import Table
 from pyiceberg.transforms import MonthTransform
-from pyiceberg.types import DoubleType, NestedField, StringType, TimestamptzType
+from pyiceberg.types import DoubleType, LongType, NestedField, StringType, TimestamptzType
 
 from gridpulse_ingestion.config import Settings
 from gridpulse_ingestion.eia.routes import Route
@@ -98,9 +98,78 @@ class RawStore:
             ContentType="application/json",
         )
 
+    def iter_manifests(self):
+        """Every run manifest in the raw bucket (for backfilling ingestion_runs)."""
+        paginator = self._s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix="_manifests/"):
+            for obj in page.get("Contents", []):
+                body = self._s3.get_object(Bucket=self.bucket, Key=obj["Key"])["Body"].read()
+                yield json.loads(body)
+
     def put_manifest(self, key: str, manifest: dict) -> None:
         body = json.dumps(manifest, indent=2, sort_keys=True, default=str).encode()
         self._s3.put_object(Bucket=self.bucket, Key=key, Body=body, ContentType="application/json")
+
+
+RUNS_TABLE = "ingestion_runs"
+_RUN_COLUMNS = [
+    ("run_id", StringType(), True),
+    ("route", StringType(), True),
+    ("started_at", TimestamptzType(), True),
+    ("status", StringType(), True),
+    ("window_start_utc", TimestamptzType(), False),
+    ("window_end_utc", TimestamptzType(), False),
+    ("scope", StringType(), False),
+    ("pages", LongType(), False),
+    ("rows_expected", LongType(), False),
+    ("rows_received", LongType(), False),
+    ("rows_appended", LongType(), False),
+    ("duration_seconds", DoubleType(), False),
+    ("error", StringType(), False),
+    ("details", StringType(), False),
+    ("_ingested_at", TimestamptzType(), True),
+]
+
+
+def runs_table_schema() -> Schema:
+    """One row per extraction attempt, mirroring the S3 run manifest."""
+    return Schema(
+        *(
+            NestedField(field_id=i, name=name, field_type=kind, required=required)
+            for i, (name, kind, required) in enumerate(_RUN_COLUMNS, start=1)
+        )
+    )
+
+
+def run_record(manifest: dict, appended_at: datetime) -> dict:
+    """Flatten a run manifest into an ingestion_runs row. Fields without a column (warnings,
+    unknown fields, missing stations, ...) go to `details` as JSON, so nothing is lost."""
+
+    def ts(value):
+        return datetime.fromisoformat(value) if isinstance(value, str) else value
+
+    columns = {name for name, _, _ in _RUN_COLUMNS}
+    scope = manifest.get("facets", manifest.get("stations"))
+    details = {
+        k: v for k, v in manifest.items() if k not in columns and k not in ("facets", "stations")
+    }
+    return {
+        "run_id": manifest["run_id"],
+        "route": manifest["route"],
+        "started_at": ts(manifest["started_at"]),
+        "status": manifest["status"],
+        "window_start_utc": ts(manifest.get("window_start_utc")),
+        "window_end_utc": ts(manifest.get("window_end_utc")),
+        "scope": json.dumps(scope) if scope is not None else None,
+        "pages": manifest.get("pages"),
+        "rows_expected": manifest.get("rows_expected"),
+        "rows_received": manifest.get("rows_received"),
+        "rows_appended": manifest.get("rows_appended"),
+        "duration_seconds": manifest.get("duration_seconds"),
+        "error": manifest.get("error"),
+        "details": json.dumps(details, sort_keys=True, default=str) if details else None,
+        "_ingested_at": appended_at,
+    }
 
 
 def raw_table_schema(route: Route) -> Schema:
@@ -210,6 +279,11 @@ class IcebergSink:
         if not records:
             return 0
         return self._append(self.table(route), records)
+
+    def append_runs(self, records: Sequence[dict]) -> int:
+        if not records:
+            return 0
+        return self._append(self._table(RUNS_TABLE, runs_table_schema(), "started_at"), records)
 
     def append_noaa(self, records: Sequence[dict]) -> int:
         if not records:

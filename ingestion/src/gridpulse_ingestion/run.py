@@ -7,6 +7,7 @@ from reruns are removed by `_record_hash` in dbt staging.
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -16,7 +17,9 @@ from pydantic import ValidationError
 from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import Route
 from gridpulse_ingestion.noaa import ghcnh
-from gridpulse_ingestion.storage import IcebergSink, RawStore, ingest_date
+from gridpulse_ingestion.storage import IcebergSink, RawStore, ingest_date, run_record
+
+log = logging.getLogger(__name__)
 
 
 def resolve_auto_start(
@@ -50,6 +53,15 @@ class RecordValidationError(RuntimeError):
 def run_id_for(route: Route, start: datetime, end: datetime, facets: Sequence[str] = ()) -> str:
     key = "|".join([route.name, start.isoformat(), end.isoformat(), ",".join(sorted(facets))])
     return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def record_run(sink: IcebergSink, manifest: dict, appended_at: datetime) -> None:
+    """Also append the manifest to raw.ingestion_runs for fct_ingestion_runs. Best effort: the
+    S3 manifest is the record, and `gridpulse-extract manifests` can backfill a missed row."""
+    try:
+        sink.append_runs([run_record(manifest, appended_at)])
+    except Exception:
+        log.warning("could not append run %s to ingestion_runs", manifest["run_id"], exc_info=True)
 
 
 def record_hash(route: Route, row: dict) -> str:
@@ -136,6 +148,7 @@ def extract(
     finally:
         manifest["duration_seconds"] = round(time.monotonic() - clock, 3)
         raw_store.put_manifest(raw_store.manifest_key(route.name, day, run_id, started), manifest)
+        record_run(sink, manifest, started)
     return manifest
 
 
@@ -206,4 +219,5 @@ def extract_noaa(
         manifest["duration_seconds"] = round(time.monotonic() - clock, 3)
         key = raw_store.manifest_key(ghcnh.ROUTE_NAME, ingest_date(started), run_id, started)
         raw_store.put_manifest(key, manifest)
+        record_run(sink, manifest, started)
     return manifest

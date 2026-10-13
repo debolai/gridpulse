@@ -203,7 +203,7 @@ The dbt project follows the staging, intermediate, marts pattern, resolves revis
 | Marts | `fct_generation_by_fuel_hourly` | BA × fuel × hour | Generation by fuel |
 | Marts | `fct_interchange_hourly` | BA × neighbor BA × hour | Directional flows |
 | Marts | `fct_data_revisions` | Revision event | Audit of what changed, when, and by how much, across all three EIA routes |
-| Marts | `fct_ingestion_runs` | Pipeline run | Expected versus received rows and run duration, from manifests |
+| Marts | `fct_ingestion_runs` | Pipeline run | Expected versus received rows and run duration, from manifests (each run also appends its manifest to `raw.ingestion_runs`) |
 | Snapshots | `snap_ba_reference` | BA × validity range | SCD Type 2 history of BA attributes |
 
 **Decision (revised 2026-10-12): resolve revisions with `merge` on a unique key, driven by an ingestion watermark.** Why: each incremental run reads only observations loaded since the last run (`ingested_at_utc` above the model's own maximum, via the `incremental_watermark()` macro), whatever hours they cover, then merges on (`ba_code`, `series_code`, `period_utc`). Following the data rather than a fixed 30-day window means backfills and gap catch-ups older than the window still land, and dbt can never disagree with ingestion about what is new. `fct_grid_hourly` rebuilds only the BA-hours that changed. Partition-pruned merge predicates are deferred until Athena scan costs show they are needed. A monthly full refresh in a scheduled job proves the incremental logic matches a full rebuild (first proven locally on 2026-10-12: identical row sets).
@@ -546,3 +546,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — Quality flags: per-series `quality_status` on `fct_grid_hourly` instead of one row-level status; spike = one-hour outlier against both adjacent hours (var `spike_threshold`, 0.5).
 - 2026-10-13 — Revision audit covers all three EIA routes (item = series, fuel or neighbour BA), with revision_type changed/filled/removed and hours_after_period.
 - 2026-10-13 — Weather source: NOAA GHCNh replaces ISD (ISD stopped updating in August 2025; ADR-0004). Seed `ba_weather_stations` covers the six sample BAs with Census Vintage 2025 metro populations; temperature joins `fct_grid_hourly` and fills in on a later run when NOAA publishes.
+- 2026-10-13 — `dim_balancing_authority` is built from `snap_ba_reference` (SCD2). Run manifests are also appended to `raw.ingestion_runs` (best effort; `gridpulse-extract manifests` backfills from S3) so dbt can build `fct_ingestion_runs` without reading JSON from S3.

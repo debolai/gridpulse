@@ -15,7 +15,7 @@ from gridpulse_ingestion.eia.client import EIAClient
 from gridpulse_ingestion.eia.routes import ROUTES
 from gridpulse_ingestion.ratelimit import TokenBucket
 from gridpulse_ingestion.run import extract, extract_noaa, resolve_auto_start
-from gridpulse_ingestion.storage import IcebergSink, RawStore
+from gridpulse_ingestion.storage import IcebergSink, RawStore, run_record
 
 
 def _utc_hour(value: str) -> datetime:
@@ -55,6 +55,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     noaa.add_argument("--end", type=_utc_hour, required=True, help="exclusive, UTC")
     noaa.add_argument("--lookback-days", type=int, default=7)
     noaa.add_argument("--max-gap-days", type=int, default=60)
+    sub.add_parser(
+        "manifests",
+        help="append every run manifest in the raw bucket to raw.ingestion_runs "
+        "(staging keeps one row per attempt, so rerunning is safe)",
+    )
     return parser.parse_args(argv)
 
 
@@ -95,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parse_args(argv)
     settings = Settings()
+    if args.source == "manifests":
+        now = datetime.now(UTC)
+        records = [run_record(m, now) for m in RawStore.from_settings(settings).iter_manifests()]
+        appended = IcebergSink.from_settings(settings).append_runs(records)
+        print(json.dumps({"manifests_appended": appended}))
+        return 0
     if args.source == "noaa":
         json.dump(run_noaa(args, settings), sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")

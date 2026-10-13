@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_pipeline__ingestion_runs
+    description: "One row per extraction attempt (deduplicated). Grain: run_id × started_at."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [run_id, started_at_utc]
+    columns:
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["succeeded", "failed", "running"]

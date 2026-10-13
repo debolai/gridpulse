@@ -8,11 +8,11 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange ✅, (3) quality flags ✅, (4) revision audit ✅, (5) NOAA weather ✅, (6) BA snapshot + ingestion-run facts. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
+- Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange ✅, (3) quality flags ✅, (4) revision audit ✅, (5) NOAA weather ✅, (6) BA snapshot + ingestion-run facts ✅. Done-when met on both engines; Elementary still open. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. B1 slice 6: `snap_ba_reference` (SCD2) with `dim_balancing_authority` built from it, and `fct_ingestion_runs` from the run manifests; then decide on Elementary (data observability)
-2. Open the B1 PR (branch `feat/b1-data-coverage`) once slice 6 lands
+1. Open the B1 PR (branch `feat/b1-data-coverage`, 6 commits), CI green, merge
+2. Decide on Elementary (B1 or B6), then B2 (orchestration on k3d: Airflow 3 via Helm, the B1 routes and NOAA as DAGs, the eia_api pool, full backfill)
 3. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
@@ -62,8 +62,8 @@ Repo: https://github.com/debolai/gridpulse
   - [x] Slice 3: quality flags — 2026-10-13. `int_grid__quality_flags` (missing, zero, negative, one-hour spike vs both adjacent hours > `spike_threshold` 0.5; per-series `quality_status` ok/suspect/invalid/missing) and four `*_quality_status` columns on `fct_grid_hourly` (absent series = missing). Incremental runs also rebuild the hour on each side of a change. Evidence: unit test covers spike up/down, level shift (not flagged), zero demand (invalid), null (missing), negative NG (suspect), interchange sign changes (ok) and gaps; it fails when the threshold is changed. Real sample is clean (all ok in July; largest demand step 22.7%). After re-pulling 2026-10-09..13 (7 real ISNE DF revisions): incremental = full rebuild for fct_grid_hourly, fct_generation_by_fuel_hourly, fct_interchange_hourly and int_grid__quality_flags (0 rows differ either way). Trino and Athena PASS=93; July statuses IDENTICAL.
   - [x] Slice 4: revision audit — 2026-10-13. `int_grid__revisions` (every change to a published value across region-data, fuel-type-data and interchange-data; incremental runs read all versions of touched keys so the previous version can be old) and `fct_data_revisions` (contract: revision_type changed/filled/removed, change_mwh, change_ratio, hours_after_period). Evidence: re-pulling 2026-10-09..13 found **7 real revisions** — ISNE re-issued its day-ahead forecast for 2026-10-12 14:00–20:00 UTC (−7.3% to +2.3%, seen 6–12 h after the hour); fuel and interchange re-pulls of 2026-10-08..13 had none. Unit tests: re-reads are not revisions, A→B→A is two, late fills count, and the incremental path compares with versions loaded long before the watermark. Incremental = full rebuild (0 rows differ). Trino PASS=103; Athena PASS=103 from a fresh table (the incremental unit test uses a SQL-format `this`, so it doesn't need the table to exist).
   - [x] Slice 5: NOAA weather — 2026-10-13. ISD stopped updating in Aug 2025, so the source is NOAA GHCNh (`noaa-ghcnh-pds`, ADR-0004). Extractor `noaa` command (anonymous S3, recorded O'Hare fixture, 9 tests); seed `ba_weather_stations` (21 GHCNh stations verified against NOAA's station list, 3–4 metros per sample BA, Census Vintage 2025 populations); `stg_noaa__observations` (QC per NOAA's GHCNh docs), `int_weather__station_hourly` (hourly mean, ≤ 2 h gaps interpolated), `int_weather__ba_hourly` (population-weighted, weight coverage), `temperature_c` on `fct_grid_hourly` (rebuilds hours whose weather arrives later). Evidence: `make extract-weather START=2026-07-01 END=2026-10-13` → 68,860 reports from all 21 stations in 10 s, none failed QC; every hour Jul 1 – Oct 11 03:00 covered; summer demand–temperature correlation 0.59–0.87. Unit tests: QC codes, averaging + 2 h interpolation + 3 h gap left null, population weighting with rescaling, late weather filling an existing hour (fails when the weather-change logic is removed). Incremental = full rebuild within 1e-9 (EXCEPT showed float-order noise only). Trino and Athena PASS=128; July temperatures IDENTICAL.
-  - [ ] Slice 6: `snap_ba_reference`, `fct_ingestion_runs`
-  - [ ] Elementary (data observability)
+  - [x] Slice 6: snapshot + ingestion runs — 2026-10-13. `snap_ba_reference` (dbt YAML snapshot, check strategy on all columns, hard deletes invalidate) and `dim_balancing_authority` now built from its open rows. Each extraction attempt also appends its manifest to `raw.ingestion_runs` (best effort; `gridpulse-extract manifests` backfills from S3), feeding `stg_pipeline__ingestion_runs` (one row per attempt) and `fct_ingestion_runs` (contract; `is_complete`). Evidence: renaming PJM in a throwaway `check_` build closed the old snapshot row and opened a new one, and the dimension showed the new name; backfill → 10 local / 4 AWS runs, all complete; a second backfill doubled the raw rows (20) but not the fact (10). 3 new extractor tests (121 Python tests total). Trino and Athena PASS=136.
+  - [ ] Elementary (data observability): not started. The B1 done-when is met without it; decide whether it stays in B1 or moves to B6.
 - [ ] B2 Orchestration on k3d (Airflow 3 Helm, KubernetesExecutor, Cosmos, 7 DAGs, pool, alerts) + full backfill on AWS
 - [ ] B3 Full semantic layer (12 metrics, saved queries, allow-list, cache)
 - [ ] B4 Full agent (clarify, inspect, checkpointer, 50-question golden set, nightly eval)
@@ -72,6 +72,8 @@ Repo: https://github.com/debolai/gridpulse
 - [ ] B7 Optional (hosted dbt Semantic Layer demo, Cube comparison)
 
 ## Deferred / later
+- B2: weather and quality-flag models are full-rebuild tables (a spike or an interpolated hour depends on neighbours); revisit with partition-scoped rebuilds before the July 2018 backfill makes them large.
+- B2: the weather seed covers only the six sample BAs; extend it before loading all BAs.
 - B3: metrics exclude flagged values by default and say so (blueprint "flag bad values"); needs the semantic ground-truth tests updated alongside.
 - Per-BA-hour reconciliation outcome as a column (today the reconciliation is a test-level pass rate).
 
@@ -131,3 +133,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — B1 slice 3 (quality flags) done on both engines; incremental = full rebuild after a real re-pull with revisions. Next: slice 4 (revision audit).
 - 2026-10-13 — B1 slice 4 (revision audit) done on both engines: 7 real ISNE forecast revisions found from a re-pull; incremental path unit-tested. Next: slice 5 (NOAA weather).
 - 2026-10-13 — B1 slice 5 (weather) done on both engines with NOAA GHCNh (ISD retired, ADR-0004). Next: slice 6 (snapshot + ingestion runs).
+- 2026-10-13 — B1 slice 6 (BA snapshot, ingestion-run facts) done on both engines; B1 done-when met (Elementary open). Next: B1 PR.
