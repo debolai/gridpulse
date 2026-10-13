@@ -9,7 +9,7 @@ from langchain_core.language_models import BaseChatModel
 
 from gridpulse_agent import prompts
 from gridpulse_agent.config import AgentSettings
-from gridpulse_agent.contract import MetricRequest, RouteDecision
+from gridpulse_agent.contract import MetricRequest, PlannedRequest, RouteDecision
 
 
 class Brain(Protocol):
@@ -24,7 +24,7 @@ class Brain(Protocol):
         errors: list[str],
         previous: MetricRequest | None,
         saved_queries: list[dict] = (),
-    ) -> MetricRequest: ...
+    ) -> PlannedRequest | MetricRequest: ...
 
     def answer(
         self,
@@ -63,7 +63,7 @@ def chat_model(settings: AgentSettings, model_id: str) -> BaseChatModel:
 class LLMBrain:
     def __init__(self, router: BaseChatModel, planner: BaseChatModel) -> None:
         self._router = router.with_structured_output(RouteDecision)
-        self._planner = planner.with_structured_output(MetricRequest)
+        self._planner = planner.with_structured_output(PlannedRequest)
         self._writer = planner
 
     @classmethod

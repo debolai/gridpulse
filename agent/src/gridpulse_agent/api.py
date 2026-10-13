@@ -1,7 +1,9 @@
 """HTTP front door for the assistant.
 
 GET  /health
-POST /ask   {"question": "..."} -> answer, status, metric request, SQL, rows
+POST /ask   {"question": "...", "thread_id": optional} -> answer, status, metric request, SQL,
+            rows, thread_id. status "needs_clarification" means the answer is a question: send
+            the user's reply as the next question with the same thread_id.
 """
 
 import hmac
@@ -46,7 +48,8 @@ def authorize(authorization: str | None = Header(default=None)) -> None:
 
 
 class Question(BaseModel):
-    question: str = Field(min_length=3, max_length=500)
+    question: str = Field(min_length=2, max_length=500)  # 2: a reply can be a BA code ("PJM")
+    thread_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
 
 
 @app.get("/health")
@@ -71,7 +74,7 @@ def unavailable(status: str, message: str, detail: str, retry_after_s: int | Non
 @app.post("/ask", dependencies=[Depends(authorize)])
 def ask_endpoint(body: Question):
     try:
-        return ask(graph(), body.question)
+        return ask(graph(), body.question, thread_id=body.thread_id)
     except httpx.HTTPError as exc:
         try:
             url = str(exc.request.url)

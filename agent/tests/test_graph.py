@@ -1,5 +1,6 @@
 from conftest import TODAY, FakeSemantic, ScriptedBrain, req
 
+from gridpulse_agent.contract import PlannedRequest
 from gridpulse_agent.graph import ask, build_graph
 
 RESULT = {
@@ -125,3 +126,55 @@ def test_definition_questions_skip_the_query(catalog, settings):
 def test_out_of_scope(catalog, settings):
     out = run(ScriptedBrain(route="out_of_scope"), FakeSemantic(catalog), settings)
     assert out["status"] == "out_of_scope" and "Prices" in out["answer"]
+
+
+CALIFORNIA = "What was California's peak demand in September 2026?"
+CISO_PEAK = req(
+    metrics=["peak_demand"], filters=[{"dimension": "balancing_authority", "values": ["CISO"]}]
+)
+PEAK = {"columns": ["peak_demand"], "rows": [[46213.0]], "sql": "select ..."}
+
+
+def test_ambiguous_region_pauses_then_resumes_with_the_reply(catalog, settings):
+    brain = ScriptedBrain(plans=[CISO_PEAK, CISO_PEAK], answers=["CISO peaked at 46,213 MW."])
+    semantic = FakeSemantic(catalog, [PEAK])
+    graph = build_graph(brain, semantic, settings)
+
+    first = ask(graph, CALIFORNIA, today=TODAY)
+    assert first["status"] == "needs_clarification"
+    assert first["answer"].startswith('"California" could mean one balancing authority')
+    assert semantic.queries == []  # nothing ran on a guess
+
+    second = ask(graph, "CISO only", thread_id=first["thread_id"])
+    assert second["status"] == "answered" and second["thread_id"] == first["thread_id"]
+    assert "They answered: CISO only" in brain.plan_calls[1]["question"]
+    assert semantic.queries == [CISO_PEAK]
+
+
+def test_the_planner_can_ask_too(catalog, settings):
+    unsure = PlannedRequest(**req().model_dump(), clarify="Which week do you mean?")
+    brain = ScriptedBrain(plans=[unsure, req()], answers=["PJM: 70,276,500 MWh."])
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT]), settings)
+    first = ask(graph, "What was PJM's demand that week?", today=TODAY)
+    assert (first["status"], first["answer"]) == ("needs_clarification", "Which week do you mean?")
+    assert ask(graph, "the first week of September", thread_id=first["thread_id"])["status"] == (
+        "answered"
+    )
+
+
+def test_only_one_clarifying_question_per_turn(catalog, settings):
+    brain = ScriptedBrain(plans=[CISO_PEAK, CISO_PEAK], answers=["CISO peaked at 46,213 MW."])
+    graph = build_graph(brain, FakeSemantic(catalog, [PEAK]), settings)
+    first = ask(graph, CALIFORNIA, today=TODAY)
+    # A reply that settles nothing still gets an answer, from the best request, not a loop.
+    second = ask(graph, "not sure", thread_id=first["thread_id"])
+    assert second["status"] == "answered"
+
+
+def test_a_new_question_in_the_same_conversation_starts_fresh(catalog, settings):
+    brain = ScriptedBrain(plans=[req(), req()], answers=["PJM: 70,276,500 MWh."] * 2)
+    graph = build_graph(brain, FakeSemantic(catalog, [RESULT, RESULT]), settings)
+    first = ask(graph, "What was PJM's demand in September 2026?", today=TODAY)
+    second = ask(graph, "And again?", today=TODAY, thread_id=first["thread_id"])
+    assert second["status"] == "answered" and second["attempts"] == 1
+    assert brain.plan_calls[1]["question"] == "And again?" and brain.plan_calls[1]["errors"] == []

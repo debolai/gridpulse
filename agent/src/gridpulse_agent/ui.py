@@ -21,18 +21,29 @@ examples = [
     "How accurate was ERCOT's day-ahead forecast in September 2026?",
     "What does data completeness measure?",
 ]
-question = st.text_input(
-    "Ask about U.S. grid demand, forecasts or data quality", placeholder=examples[0]
-)
+# The conversation id lets a reply to a clarifying question resume the paused question.
+pending = st.session_state.get("pending_question")
+if pending:
+    st.info(f"❓ {pending}")
+with st.form("ask", clear_on_submit=True):
+    question = st.text_input(
+        "Your answer" if pending else "Ask about U.S. grid demand, forecasts or data quality",
+        placeholder="" if pending else examples[0],
+    )
+    submitted = st.form_submit_button("Send")
 cols = st.columns(len(examples))
 for col, example in zip(cols, examples, strict=True):
     if col.button(example, use_container_width=True):
-        question = example
+        question, submitted = example, True
+        # An example starts a new conversation.
+        st.session_state.pop("thread_id", None)
+        st.session_state.pop("pending_question", None)
 
-if question:
+if submitted and question:
     headers = {"Authorization": f"Bearer {TOKEN}"} if TOKEN else {}
+    body = {"question": question, "thread_id": st.session_state.get("thread_id")}
     with st.spinner("Planning a metric request and querying the semantic layer..."):
-        resp = httpx.post(f"{API}/ask", json={"question": question}, headers=headers, timeout=180)
+        resp = httpx.post(f"{API}/ask", json=body, headers=headers, timeout=180)
     if resp.status_code == 503:  # model or metrics API unavailable: the API explains why
         st.warning(resp.json().get("message", resp.text))
         st.stop()
@@ -40,6 +51,11 @@ if question:
         st.error(f"{resp.status_code}: {resp.text}")
         st.stop()
     out = resp.json()
+    st.session_state["thread_id"] = out["thread_id"]
+    if out["status"] == "needs_clarification":
+        st.session_state["pending_question"] = out["answer"]
+        st.rerun()  # show the question above the input
+    st.session_state.pop("pending_question", None)
     badge = {"answered": "✅ numbers verified", "fallback_table": "⚠️ fallback to raw table"}.get(
         out["status"], out["status"]
     )

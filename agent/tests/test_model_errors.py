@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import anthropic
 import httpx
 import openai
@@ -58,7 +60,10 @@ class Raising:
     def __init__(self, exc):
         self.exc = exc
 
-    def invoke(self, _state):
+    def get_state(self, _config):
+        return SimpleNamespace(interrupts=())  # no clarifying question pending
+
+    def invoke(self, _state, _config=None):
         raise self.exc
 
 

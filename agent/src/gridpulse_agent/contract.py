@@ -41,6 +41,21 @@ class MetricRequest(BaseModel):
     limit: int = Field(default=200, ge=1, le=1000)
 
 
+class PlannedRequest(MetricRequest):
+    """What the planner returns: its best request, plus a question when it can't decide.
+    `clarify` is stripped before validation, so the API contract stays MetricRequest."""
+
+    clarify: str | None = Field(
+        default=None,
+        description="ONLY when the question can't be answered without the user's choice (which "
+        "of several places or BAs, or an unclear time period): one short question to ask them. "
+        "Leave empty otherwise, and still fill in your best request.",
+    )
+
+    def request(self) -> MetricRequest:
+        return MetricRequest.model_validate(self.model_dump(exclude={"clarify"}))
+
+
 class RouteDecision(BaseModel):
     route: Literal["metric", "definition", "out_of_scope"] = Field(
         description="metric: needs numbers from the data. definition: asks what a metric means "

@@ -98,6 +98,8 @@ def run(brain: Brain, semantic: SemanticClient, settings: AgentSettings) -> dict
                     errors
                 ):  # the graph would retry with these errors; give the planner the same chance
                     planned = brain.plan(case.question, catalog, bas, today, errors, planned, saved)
+                if getattr(planned, "clarify", None):  # golden questions are unambiguous
+                    reasons.append(f"asked to clarify: {planned.clarify}")
                 reasons += score(planned, case.expected)
         except Exception as exc:  # a crash is a failed case, not a failed run
             reasons.append(f"{type(exc).__name__}: {exc}")

@@ -1,25 +1,31 @@
 """The GridPulse assistant as an explicit LangGraph graph.
 
-    route ─┬─ metric ─> plan ─> validate ─ok─> execute ─> inspect ─> answer ─> ground_check ─> END
-           │             ^          │             │            │                     │
-           │             └─ errors ─┘ (≤2 retries) │            └─ no rows: END       │
-           │                                       └─ API rejects: replan            │
-           ├─ definition ─> define ─> END                  unsupported number: rewrite once,
-           └─ out_of_scope ─> END                          then fall back to a table
+    route ─┬─ metric ─> plan ─> validate ─ok─> ambiguity ─> execute ─> inspect ─> answer ─> ...
+           │             ^ ^        │                 │           │            │
+           │             │ └ errors ┘ (≤2 retries)    │           │            └─ no rows: END
+           │             └──── clarify <─ ambiguous ──┘           └─ API rejects: replan
+           │                   (interrupt: ask the user once, resume with their reply)
+           ├─ definition ─> define ─> END        ... answer ─> ground_check ─> END; unsupported
+           └─ out_of_scope ─> END                number: rewrite once, then a plain table
 
 The model only routes, plans and writes. Validation, execution, inspection and the number check
 are code, and so are the lines appended to every answer: what the metrics left out (flagged
 values) and the inspection's caveats (completeness, latest hour, revision window).
-Clarifying questions join in phase B4.
+A clarifying question pauses the graph (LangGraph interrupt); the conversation's checkpoint
+holds it until the user's reply resumes the same thread (see `ask`).
 """
 
 from datetime import UTC, date, datetime
 from typing import Any, Literal, TypedDict
+from uuid import uuid4
 
 import httpx
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Command, interrupt
 
-from gridpulse_agent import inspection, prompts
+from gridpulse_agent import clarify, inspection, prompts
 from gridpulse_agent.brain import Brain
 from gridpulse_agent.config import AgentSettings
 from gridpulse_agent.contract import MetricRequest
@@ -33,6 +39,11 @@ class State(TypedDict, total=False):
     today: date
     route: str
     request: MetricRequest | None
+    planner_clarify: str | None  # the planner's own question, if it had one
+    clarify_question: str | None  # the question to ask now, if any
+    clarifications: int  # asked this turn (at most one)
+    asked: str | None  # the clarifying question asked this turn, and the user's reply
+    reply: str | None
     errors: list[str]
     attempts: int
     result: dict | None
@@ -41,8 +52,37 @@ class State(TypedDict, total=False):
     rewrites: int
     caveats: list[str]
     status: Literal[
-        "answered", "definition", "out_of_scope", "no_valid_request", "fallback_table", "no_data"
+        "answered",
+        "definition",
+        "out_of_scope",
+        "no_valid_request",
+        "fallback_table",
+        "no_data",
+        "needs_clarification",
     ]
+
+
+# Our own types stored in checkpoints; LangGraph only deserializes types it is told to trust.
+CHECKPOINT_TYPES = [
+    ("gridpulse_agent.contract", "MetricRequest"),
+    ("gridpulse_agent.contract", "Filter"),
+]
+
+
+def checkpoint_serializer() -> JsonPlusSerializer:
+    return JsonPlusSerializer(allowed_msgpack_modules=CHECKPOINT_TYPES)
+
+
+def _user_text(state: State) -> str:
+    """What the user said this turn: the question, plus their reply to a clarifying question.
+    Our own question is left out: it lists BA codes and would look like the user's choice."""
+    return " ".join(filter(None, [state["question"], state.get("reply")]))
+
+
+def _planner_text(state: State) -> str:
+    if not state.get("reply"):
+        return state["question"]
+    return f"{state['question']}\n(I asked: {state['asked']} They answered: {state['reply']})"
 
 
 def _table(result: dict, limit: int = 20) -> str:
@@ -66,8 +106,8 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         return {"answer": prompts.OUT_OF_SCOPE, "status": "out_of_scope"}
 
     def plan(state: State) -> State:
-        request = brain.plan(
-            state["question"],
+        planned = brain.plan(
+            _planner_text(state),
             semantic.catalog(),
             semantic.balancing_authorities(),
             state["today"],
@@ -75,7 +115,13 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
             state.get("request"),
             semantic.saved_queries(),
         )
-        return {"request": request, "attempts": state.get("attempts", 0) + 1}
+        clarify_q = getattr(planned, "clarify", None)
+        request = planned.request() if hasattr(planned, "request") else planned
+        return {
+            "request": request,
+            "planner_clarify": clarify_q,
+            "attempts": state.get("attempts", 0) + 1,
+        }
 
     def check(state: State) -> State:
         errors = validate(
@@ -85,6 +131,30 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
             max_rows=settings.max_rows,
         )
         return {"errors": errors}
+
+    def ambiguity(state: State) -> State:
+        if state.get("clarifications", 0) >= 1:
+            return {"clarify_question": None}  # asked once already: go with the best request
+        try:
+            bas = semantic.ba_regions()
+        except (SemanticAPIError, httpx.HTTPError):
+            bas = []  # the region rule can't run; the planner's own question still can
+        question = clarify.region_question(_user_text(state), state["request"], bas)
+        return {"clarify_question": question or state.get("planner_clarify")}
+
+    def ask_user(state: State) -> State:
+        asked = state["clarify_question"]
+        reply = interrupt({"question": asked})  # pauses here until the user answers
+        return {
+            "asked": asked,
+            "reply": reply,
+            "clarifications": state.get("clarifications", 0) + 1,
+            "clarify_question": None,
+            "planner_clarify": None,
+            "request": None,
+            "errors": [],
+            "attempts": 0,
+        }
 
     def execute(state: State) -> State:
         try:
@@ -123,7 +193,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
 
     def answer(state: State) -> State:
         text = brain.answer(
-            state["question"],
+            _planner_text(state),
             state["request"],
             state["result"],
             semantic.catalog(),
@@ -132,7 +202,7 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         return {"answer": text}
 
     def ground_check(state: State) -> State:
-        context = state["question"] + " " + state["request"].model_dump_json()
+        context = _user_text(state) + " " + state["request"].model_dump_json()
         bad = unsupported_numbers(state["answer"], state["result"]["rows"], context)
         if not bad:
             return {"unsupported": [], "status": "answered"}
@@ -150,13 +220,16 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
 
     def after_check(state: State) -> str:
         if not state["errors"]:
-            return "execute"
+            return "ambiguity"
         return "plan" if state["attempts"] < settings.max_plan_attempts else "give_up"
 
     def after_execute(state: State) -> str:
         if state.get("result") is not None:
             return "inspect"
         return "plan" if state["attempts"] < settings.max_plan_attempts else "give_up"
+
+    def after_ambiguity(state: State) -> str:
+        return "clarify" if state.get("clarify_question") else "execute"
 
     def after_inspect(state: State) -> str:
         return END if state.get("status") == "no_data" else "answer"
@@ -171,6 +244,8 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
         ("out_of_scope", out_of_scope),
         ("plan", plan),
         ("validate", check),
+        ("ambiguity", ambiguity),
+        ("clarify", ask_user),
         ("execute", execute),
         ("inspect", inspect),
         ("give_up", give_up),
@@ -181,19 +256,67 @@ def build_graph(brain: Brain, semantic: SemanticClient, settings: AgentSettings,
     g.add_edge(START, "route")
     g.add_conditional_edges("route", after_route, ["plan", "define", "out_of_scope"])
     g.add_edge("plan", "validate")
-    g.add_conditional_edges("validate", after_check, ["execute", "plan", "give_up"])
+    g.add_conditional_edges("validate", after_check, ["ambiguity", "plan", "give_up"])
+    g.add_conditional_edges("ambiguity", after_ambiguity, ["clarify", "execute"])
+    g.add_edge("clarify", "plan")
     g.add_conditional_edges("execute", after_execute, ["inspect", "plan", "give_up"])
     g.add_conditional_edges("inspect", after_inspect, ["answer", END])
     g.add_edge("answer", "ground_check")
     g.add_conditional_edges("ground_check", after_ground_check, ["answer", END])
     for terminal in ("define", "out_of_scope", "give_up"):
         g.add_edge(terminal, END)
-    return g.compile(checkpointer=checkpointer)
+    # A checkpointer is required: a clarifying question pauses the run until the reply arrives.
+    return g.compile(checkpointer=checkpointer or InMemorySaver(serde=checkpoint_serializer()))
 
 
-def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
-    state = graph.invoke({"question": question, "today": today or datetime.now(UTC).date()})
+# Everything one question sets, reset at the start of the next one in the same conversation.
+_FRESH_TURN = {
+    "route": None,
+    "request": None,
+    "planner_clarify": None,
+    "clarify_question": None,
+    "clarifications": 0,
+    "asked": None,
+    "reply": None,
+    "errors": [],
+    "attempts": 0,
+    "result": None,
+    "answer": "",
+    "unsupported": [],
+    "rewrites": 0,
+    "caveats": [],
+    "status": None,
+}
+
+
+def ask(
+    graph, question: str, today: date | None = None, thread_id: str | None = None
+) -> dict[str, Any]:
+    """One message in a conversation. If the conversation is waiting for the answer to a
+    clarifying question, the message is that answer and the paused run resumes."""
+    thread_id = thread_id or uuid4().hex
+    config = {"configurable": {"thread_id": thread_id}}
+    if graph.get_state(config).interrupts:
+        state = graph.invoke(Command(resume=question), config)
+    else:
+        today = today or datetime.now(UTC).date()
+        state = graph.invoke({**_FRESH_TURN, "question": question, "today": today}, config)
     request = state.get("request")
+    if state.get("__interrupt__"):
+        return {
+            "answer": state["__interrupt__"][0].value["question"],
+            "status": "needs_clarification",
+            "thread_id": thread_id,
+            "route": state.get("route"),
+            "metric_request": request.model_dump(mode="json") if request else None,
+            "sql": None,
+            "columns": [],
+            "rows": [],
+            "attempts": state.get("attempts", 0),
+            "unsupported_numbers": [],
+            "notes": [],
+            "caveats": [],
+        }
     result = state.get("result") or {}
     answered = state["status"] in ("answered", "fallback_table")
     notes = result.get("notes", []) if answered else []
@@ -211,4 +334,5 @@ def ask(graph, question: str, today: date | None = None) -> dict[str, Any]:
         "unsupported_numbers": state.get("unsupported", []),
         "notes": notes,
         "caveats": caveats,
+        "thread_id": thread_id,
     }

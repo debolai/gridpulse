@@ -50,6 +50,26 @@ class SemanticClient:
 
         return self._cached("saved", load)
 
+    def ba_regions(self) -> list[dict]:
+        """Every active BA in EIA's reference (with or without data) and its region."""
+
+        def load():
+            dims = ["balancing_authority__ba_name", "balancing_authority__region"]
+            body = {
+                "metrics": ["active_balancing_authorities"],
+                "group_by": ["balancing_authority", *dims, "balancing_authority__region_name"],
+                "limit": 500,
+            }
+            resp = self._http.post("/query", json=body)
+            resp.raise_for_status()
+            return [
+                {"code": code, "name": name, "region": region, "region_name": region_name}
+                for code, name, region, region_name, active in resp.json()["rows"]
+                if active
+            ]
+
+        return self._cached("ba_regions", load)
+
     def balancing_authorities(self) -> list[tuple[str, str]]:
         """(code, name) for every BA with data, so the planner can map names to codes."""
 

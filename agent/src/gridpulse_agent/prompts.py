@@ -44,6 +44,10 @@ Rules:
   A region's / interconnection's / the country's combined peak is coincident_peak_demand with
   demand_scope__scope_code = the region code, Eastern / Western / ERCOT, or US48.
 - net_imports: positive = imports, negative = net exporter.
+- A whole EIA region's total (demand, generation): filter balancing_authority__region (e.g. CAL);
+  its combined peak: coincident_peak_demand with demand_scope__scope_code.
+- Set clarify (one short question) only when you can't answer without the user's choice; still
+  fill in your best request. Don't ask about things the rules above settle (time zone is UTC).
 - For "which/highest/worst" questions, add order_by (e.g. "-forecast_error_mape") and keep the
   limit small.
 {feedback}

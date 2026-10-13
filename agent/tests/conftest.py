@@ -44,7 +44,12 @@ class ScriptedBrain:
 
     def plan(self, question, catalog, bas, today, errors, previous, saved_queries=()):
         self.plan_calls.append(
-            {"errors": list(errors), "previous": previous, "saved_queries": list(saved_queries)}
+            {
+                "question": question,
+                "errors": list(errors),
+                "previous": previous,
+                "saved_queries": list(saved_queries),
+            }
         )
         return self.plans.pop(0)
 
@@ -87,6 +92,9 @@ class FakeSemantic:
 
     def latest_hour(self):
         return self._latest
+
+    def ba_regions(self):
+        return json.loads((FIXTURES / "ba_regions.json").read_text())
 
     def catalog(self):
         return self._catalog

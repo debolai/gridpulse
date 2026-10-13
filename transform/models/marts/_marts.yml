@@ -8,6 +8,17 @@ models:
     semantic_model:
       enabled: true
       name: balancing_authorities
+    agg_time_dimension: activation_date
+    metrics:
+      - name: active_balancing_authorities
+        label: Active balancing authorities
+        description: >
+          Number of balancing authorities in EIA's reference list that have not retired, with
+          or without data loaded. For lookups (which BAs make up a region); hidden from the
+          agent.
+        type: simple
+        agg: sum
+        expr: case when retirement_date is null then 1 else 0 end
     columns:
       - name: ba_code
         data_type: varchar
@@ -33,6 +44,10 @@ models:
           description: EIA region code, e.g. CAL (California), TEX (Texas), MIDA (Mid-Atlantic).
       - name: region_name
         data_type: varchar
+        dimension:
+          type: categorical
+          name: region_name
+          description: EIA region name, e.g. California, Carolinas, Florida, Mid-Atlantic.
       - name: interconnection
         data_type: varchar
         description: Eastern, Western or ERCOT. Derived from region; see the seed script.
@@ -60,6 +75,11 @@ models:
         data_type: boolean
       - name: activation_date
         data_type: date
+        granularity: day
+        dimension:
+          type: time
+          name: activation_date
+          description: Date the BA started operating (EIA reference).
       - name: retirement_date
         data_type: date
 

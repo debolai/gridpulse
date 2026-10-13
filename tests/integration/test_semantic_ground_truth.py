@@ -439,3 +439,15 @@ def test_agent_inspection_queries_match_sql(api, sql):
         "SELECT 1, max(period_utc) FROM marts.fct_grid_hourly WHERE demand_mwh IS NOT NULL"
     )
     assert client.latest_hour() == latest[1]
+
+
+def test_agent_region_lookup_lists_every_active_ba(api, sql):
+    """The clarify rule's BA -> region list covers the whole reference, not just BAs with data."""
+    from gridpulse_agent.semantic_client import SemanticClient
+
+    got = {b["code"]: b["region"] for b in SemanticClient("http://t", http=api).ba_regions()}
+    expected = sql(
+        "SELECT ba_code, region_code FROM marts.dim_balancing_authority "
+        "WHERE retirement_date IS NULL"
+    )
+    assert got == expected and len(got) > 50
