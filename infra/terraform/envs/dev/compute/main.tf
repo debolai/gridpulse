@@ -60,6 +60,22 @@ module "eks" {
   # The SSO admin role that runs `make aws-up` gets cluster-admin via an EKS access entry.
   enable_cluster_creator_admin_permissions = true
 
+  # CD (GitHub, production environment) deploys with Helm into the gridpulse namespace only.
+  access_entries = {
+    github_deploy = {
+      principal_arn = "arn:aws:iam::${local.account}:role/gridpulse-${var.env}-github-deploy"
+      policy_associations = {
+        gridpulse = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy"
+          access_scope = {
+            type       = "namespace"
+            namespaces = ["gridpulse"]
+          }
+        }
+      }
+    }
+  }
+
   # Demo cluster, recreated often: no customer-managed KMS key (each would linger 7+ days after
   # destroy, pending deletion) and no control-plane log group. EKS still encrypts secrets at
   # rest by default with an AWS-owned key.

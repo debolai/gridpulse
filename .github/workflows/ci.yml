@@ -116,6 +116,8 @@ jobs:
           done
       - name: tflint and checkov
         run: make tf-lint
+      - name: helm lint and kubeconform (the demo chart)
+        run: make helm-lint
 
   # Which parts of the repo a pull request touches, so AWS jobs only run when they matter.
   changes:

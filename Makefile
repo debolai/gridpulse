@@ -238,6 +238,16 @@ TFLINT := docker run --rm -v $(CURDIR)/infra/terraform:/data -w /data \
 CHECKOV := docker run --rm -v $(CURDIR)/infra/terraform:/tf -w /tf \
 	bridgecrew/checkov:3.2.450@sha256:f14993a3f01ad7f936add90c2169232e47370a881e5a410a0a9d34c4542b459d
 
+HELM := docker run --rm -v $(CURDIR)/infra/helm:/charts \
+	alpine/helm:3.19.0@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9
+KUBECONFORM := docker run --rm -i \
+	ghcr.io/yannh/kubeconform:v0.6.7@sha256:0925177fb05b44ce18574076141b5c3d83235e1904d3f952182ac99ddc45762c
+
+helm-lint: ## Lint the gridpulse chart and validate its rendered manifests against Kubernetes schemas
+	$(HELM) lint /charts/gridpulse --set image.registry=example
+	$(HELM) template gridpulse /charts/gridpulse --set image.registry=example --set image.tag=ci \
+		| $(KUBECONFORM) -strict -summary -kubernetes-version 1.33.0 -
+
 tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reasons: infra/terraform/.checkov.yaml)
 	$(TFLINT) --recursive
 	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet

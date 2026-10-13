@@ -33,6 +33,10 @@ spec:
             - {name: GRIDPULSE_AGENT_PROVIDER, value: {{ .Values.agent.provider | quote }}}
             - {name: GRIDPULSE_AGENT_AWS_REGION, value: {{ .Values.region | quote }}}
             - {name: GRIDPULSE_AGENT_SEMANTIC_API_URL, value: "http://semantic-api:8090"}
+            {{- if .Values.memory.enabled }}
+            - name: GRIDPULSE_AGENT_CHECKPOINT_DSN
+              valueFrom: {secretKeyRef: {name: agent-memory, key: dsn}}
+            {{- end }}
           ports:
             - {name: http, containerPort: 8091}
           readinessProbe:
