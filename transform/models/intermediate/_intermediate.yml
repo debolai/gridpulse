@@ -41,6 +41,24 @@ models:
       - name: ingested_at_utc
         data_tests: [not_null]
 
+  - name: int_interchange__latest_values
+    description: >
+      Latest observed flow per balancing authority, neighbour and hour. Grain: BA ×
+      neighbour × hour. Newest load wins.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [from_ba_code, to_ba_code, period_utc]
+    columns:
+      - name: from_ba_code
+        data_tests: [not_null]
+      - name: to_ba_code
+        data_tests: [not_null]
+      - name: period_utc
+        data_tests: [not_null]
+      - name: ingested_at_utc
+        data_tests: [not_null]
+
 unit_tests:
   - name: latest_observation_wins_even_when_value_reverts
     description: >

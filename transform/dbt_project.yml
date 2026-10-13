@@ -30,6 +30,9 @@ seeds:
         is_active: boolean
         activation_date: date
         retirement_date: date
+    reconciliation_exceptions:
+      +column_types:
+        observed_on: date
     fuel_type_map:
       +column_types:
         is_renewable: boolean

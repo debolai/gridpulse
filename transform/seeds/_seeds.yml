@@ -1,0 +1,27 @@
+version: 2
+
+seeds:
+  - name: reconciliation_exceptions
+    description: >
+      BAs excused from a reconciliation test, each with the measured reason and the date it
+      was observed. An exception is a documented source-data problem, never a way to make a
+      test pass; remove the row once the check passes for that BA.
+    columns:
+      - name: check_name
+        description: fuel_mix_to_net_generation or interchange_to_total_interchange.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["fuel_mix_to_net_generation", "interchange_to_total_interchange"]
+      - name: ba_code
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('ba_reference')
+                field: ba_code
+      - name: reason
+        data_tests: [not_null]
+      - name: observed_on
+        data_tests: [not_null]

@@ -339,6 +339,62 @@ models:
         data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
         description: The load that last changed this value.
 
+  - name: fct_interchange_hourly
+    description: >
+      Hourly directional flow between a balancing authority and each directly connected
+      neighbour, as reported by the BA. Grain: BA × neighbour × UTC hour. Positive = the BA
+      exports to the neighbour. For a BA-hour the flows add up to total_interchange_mwh in
+      fct_grid_hourly (see the reconciliation test). Neighbours outside the U.S. are kept and
+      flagged with is_international_neighbor.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ba_code, neighbor_ba_code, period_utc]
+    columns:
+      - name: ba_code
+        data_type: varchar
+        description: Reporting balancing authority.
+        constraints:
+          - type: not_null
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_balancing_authority')
+                field: ba_code
+      - name: neighbor_ba_code
+        data_type: varchar
+        description: Directly connected balancing authority (U.S., Canadian or Mexican).
+        constraints:
+          - type: not_null
+      - name: neighbor_ba_name
+        data_type: varchar
+        description: Neighbour's name as EIA reports it (the only name source for non-U.S. operators).
+      - name: is_international_neighbor
+        data_type: boolean
+        description: True when the neighbour is not a U.S. balancing authority in dim_balancing_authority.
+        data_tests: [not_null]
+      - name: period_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour, UTC.
+        constraints:
+          - type: not_null
+      - name: period_local
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: Start of the hour in the reporting BA's local time zone.
+        data_tests: [not_null]
+      - name: date_local
+        data_type: date
+      - name: hour_local
+        data_type: integer
+      - name: interchange_mwh
+        data_type: double
+        description: >
+          Flow in MWh. Positive = ba_code exports to neighbor_ba_code, negative = imports.
+          The semantic layer's net_imports metric flips the sign.
+      - name: last_ingested_at_utc
+        data_type: "{{ 'timestamp' if target.type == 'athena' else 'timestamp(6)' }}"
+        description: The load that last changed this value.
+
 unit_tests:
   - name: local_time_handles_dst_and_arizona
     description: >

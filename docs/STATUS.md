@@ -8,11 +8,11 @@ Last updated: 2026-10-12
 Repo: https://github.com/debolai/gridpulse
 
 ## Current focus
-- Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange, (3) quality flags, (4) revision audit, (5) NOAA weather, (6) BA snapshot + ingestion-run facts. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
+- Phase B1 — Data coverage, in vertical slices: (1) fuel mix ✅, (2) interchange ✅, (3) quality flags, (4) revision audit, (5) NOAA weather, (6) BA snapshot + ingestion-run facts. Done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions. (Phase A closes when TODO #11 lands; see Next up.)
 
 ## Next up
-1. B1 slice 2: interchange (`stg_eia__interchange_data`, `fct_interchange_hourly`, reconciliation of neighbour flows to TI, pair symmetry A→B = −(B→A))
-2. B1 slices 3–6 (quality flags, revision audit, NOAA weather, snapshot + ingestion runs)
+1. B1 slice 3: quality flags (`int_grid__quality_flags`: missing, zero, negative, spike; `is_*` + `quality_status` on fct_grid_hourly; reconciliation outcome per BA-hour)
+2. B1 slices 4–6 (revision audit, NOAA weather, snapshot + ingestion runs)
 3. **When TODO #11 lands: revert the temporary OpenAI provider** (ADR-0003 revert checklist), rerun `make agent-eval` on Bedrock (then tick A5), the full `make aws-down && make aws-up` cycle (then tick A6), re-record the GIF, close the MVP checkpoint
 
 ## Blockers
@@ -58,7 +58,7 @@ Repo: https://github.com/debolai/gridpulse
 ## Phase B — Depth
 - [ ] **B1 Data coverage** — done when all marts build, reconciliation passes on ≥ 98% of BA-hours, and `fct_data_revisions` shows real revisions from re-pulled windows
   - [x] Slice 1: fuel mix — 2026-10-13. Routes `fuel-type-data` and `interchange-data` in the extractor (row models, recorded multi-page fixtures, 10 new tests). Seed `fuel_type_map` (16 codes), `stg_eia__fuel_type_data`, `int_generation__latest_values`, `dim_fuel_type`, `fct_generation_by_fuel_hourly` (contract). Evidence: `make extract-sample ROUTE=fuel-type-data START=2026-07-01 END=2026-10-13` twice → 125,744/125,744 rows each, 125,744 distinct hashes (rerun idempotent). `make dbt-build` PASS=57 on Trino and `make dbt-build-aws` PASS=57 on Athena; July per-BA rows, generation and fuel counts IDENTICAL. Reconciliation (fuels sum to NG within 1% or 1 MWh) per BA: ERCO/MISO/NYIS 100%, CISO 99.39%, ISNE 99.15%, PJM 98.87%; the test fails as expected at 0.1% tolerance (2 BAs).
-  - [ ] Slice 2: interchange
+  - [x] Slice 2: interchange — 2026-10-13. `stg_eia__interchange_data`, `int_interchange__latest_values`, `fct_interchange_hourly` (contract; positive = export; non-U.S. neighbours kept with `is_international_neighbor`). Evidence: 89,222/89,222 rows locally and on AWS; `make dbt-build` PASS=83 on Trino and Athena; July per-BA rows, flow totals, neighbour and international counts IDENTICAL. Flows sum to TI within 1% on ≥ 99.7% of hours for CISO, ERCO, ISNE, MISO, NYIS; PJM is a documented exception (seed `reconciliation_exceptions`); the test fails on PJM when the exception is removed.
   - [ ] Slice 3: quality flags
   - [ ] Slice 4: revision audit (`int_grid__revisions`, `fct_data_revisions`)
   - [ ] Slice 5: NOAA weather
@@ -78,6 +78,10 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-12: The dbt manifest bakes in the target's catalog (`lake` vs `awsdatacatalog`). The semantic image parsed at build time with the default `local` target, so on EKS every query failed with `CATALOG_NOT_FOUND: Catalog 'lake'`. The entrypoint now re-parses for `DBT_TARGET`.
 - 2026-10-13: EIA fuel codes come with inconsistent names (PS = "Pumped storage"/"Pumped Storage", BAT = "Battery"/"Battery storage", UES and SNB likewise), so `fuel_type_map` is keyed on the code and EIA's label is not used downstream. Codes are validated by shape at ingestion; an unknown code warns in dbt instead of failing.
 - 2026-10-13: Fuel mix vs net generation: PJM's fuels run a steady ~0.4% (≈470 MWh/h) off its NG; CISO and ISNE have isolated hours off by up to 245% / 100% (partial fuel reports). Candidates for quality flags in slice 3.
+- 2026-10-13: PJM's per-neighbour flows don't add up to its TI (mean gap 2,467 MWh, sd ≈ 2,700; 10% of hours within 1%; some hours list 5–6 of 7 neighbours). The other five sample BAs match on ≥ 99.7% of hours. Recorded in seed `reconciliation_exceptions` rather than loosening the tolerance.
+- 2026-10-13: Neighbour pairs disagree: PJM→MISO vs −(MISO→PJM) differs by ~1,600 MWh on average, NYIS–PJM ~700, ISNE–NYIS ~16; under 15% of hours symmetric within 1%. Plausibly metering/scheduling differences and loop flows; documented, not tested.
+- 2026-10-13: Interchange neighbours include non-U.S. operators (HQT, IESO, NBSO, MHEB, CEN) absent from the EIA-930 BA reference; kept and flagged rather than dropped.
+- 2026-10-13: A dbt seed needs at least one data row (a header-only CSV fails to load).
 - 2026-10-13: Fuel-type data lags region-data: the latest fuel hour was 06:00 UTC when region-data had 20:00.
 - 2026-10-13: The UI showed time-series rows in arrival order when the planner omitted `order_by`; it now sorts by the time column (the chart already did).
 - 2026-10-13: Editing an OpenAI key's permissions after creation left about half of all calls failing with 401 `missing_scope` for 15+ minutes; a fresh key created with the right scope worked at once (12/12). Restricted keys need only Model capabilities = Write (`model.request`); listing models needs `api.model.read`, so `make openai-check` makes one tiny call per model instead.
@@ -116,3 +120,4 @@ Repo: https://github.com/debolai/gridpulse
 - 2026-10-13 — TODO #12 done (second key; the edited first key failed half its calls). A5 eval passes on OpenAI: 94% then 100%; live `/ask` answer matches the semantic API and Athena. Provisional until the Bedrock rerun (#11). Local stack stopped, caches cleaned.
 - 2026-10-13 — Agent API returns 503 with a clear reason for model/metrics outages (live-checked on throttled Bedrock). README MVP section, flow diagram, evidence table and Phase B list; demo GIF recorded with `make demo-gif`. Local stack stopped. Next: commit + PR.
 - 2026-10-13 — B1 started. Slice 1 (fuel mix) done on both engines: extractor routes for fuel-type and interchange, fuel seed, staging → latest values → `dim_fuel_type` + `fct_generation_by_fuel_hourly`, reconciliation test (≥ 98% per BA, all pass). Next: slice 2 (interchange).
+- 2026-10-13 — B1 slice 2 (interchange) done on both engines; flows reconcile to TI for 5 of 6 sample BAs, PJM documented as a source exception. Next: slice 3 (quality flags).

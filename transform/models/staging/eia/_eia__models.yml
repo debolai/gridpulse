@@ -65,3 +65,28 @@ models:
         data_tests: [not_null]
       - name: ingested_at_utc
         data_tests: [not_null]
+
+  - name: stg_eia__interchange_data
+    description: >
+      Typed EIA interchange observations. Grain: BA × neighbour × hour × load. Positive =
+      from_ba_code exports to to_ba_code.
+    columns:
+      - name: from_ba_code
+        description: Reporting balancing authority.
+        data_tests: [not_null]
+      - name: to_ba_code
+        description: Neighbouring balancing authority (may be Canadian or Mexican).
+        data_tests: [not_null]
+      - name: period_utc
+        data_tests: [not_null]
+      - name: interchange_mwh
+        description: Flow in MWh; positive = export from from_ba_code.
+      - name: value_units
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["megawatthours"]
+      - name: record_hash
+        data_tests: [not_null]
+      - name: ingested_at_utc
+        data_tests: [not_null]
