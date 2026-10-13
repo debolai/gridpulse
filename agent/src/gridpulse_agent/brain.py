@@ -47,6 +47,13 @@ def chat_model(settings: AgentSettings, model_id: str) -> BaseChatModel:
 
         key = settings.anthropic_api_key.get_secret_value() if settings.anthropic_api_key else None
         return ChatAnthropic(model=model_id, api_key=key, temperature=0, max_tokens=2048)
+    if settings.provider == "openai":  # temporary, local only (ADR-0003)
+        from langchain_openai import ChatOpenAI
+
+        key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
+        # No temperature: OpenAI's reasoning models reject anything but the default. The token
+        # cap includes reasoning tokens, hence higher than for the other providers.
+        return ChatOpenAI(model=model_id, api_key=key, max_tokens=8192)
     from langchain_ollama import ChatOllama
 
     return ChatOllama(model=model_id, base_url=settings.ollama_url, temperature=0)

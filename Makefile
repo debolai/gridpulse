@@ -8,7 +8,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui \
-	semantic-manifest semantic-api mf bedrock-check agent-api agent-ui agent-eval
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -200,6 +200,10 @@ mf: ## Run MetricFlow directly, e.g. make mf ARGS="query --metrics demand --grou
 # --- Assistant (agent/) ---------------------------------------------------------
 # Needs the semantic API running (make semantic-api) and a model provider:
 # GRIDPULSE_AGENT_PROVIDER=bedrock (default; AWS login + TODO #7) | anthropic | ollama
+# | openai (temporary, local only, until Bedrock quotas are lifted: ADR-0003, TODO #11)
+
+openai-check: ## Confirm the OpenAI key in .env can call the agent's two models (one tiny request each)
+	uv run --quiet python -m gridpulse_agent.openai_check
 
 agent-api: ## Serve the assistant at http://localhost:8091/docs
 	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent

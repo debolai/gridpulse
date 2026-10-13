@@ -9,6 +9,7 @@ dependencies = [
     "langchain-aws",
     "langchain-anthropic",
     "langchain-ollama",
+    "langchain-openai",  # temporary, local only (ADR-0003)
     "httpx",
     "pydantic",
     "pydantic-settings",
