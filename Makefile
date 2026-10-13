@@ -8,7 +8,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui \
-	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval demo-gif
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -210,6 +210,9 @@ agent-api: ## Serve the assistant at http://localhost:8091/docs
 
 agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 	uv run streamlit run agent/src/gridpulse_agent/ui.py
+
+demo-gif: ## Record docs/assets/demo.gif from the running UI (needs lake, semantic-api, agent-api, agent-ui)
+	uv run --quiet --with playwright==1.63.0 python agent/scripts/demo_gif.py
 
 agent-eval: ## Score the planner on the golden question set (fails below 90%)
 	AWS_PROFILE=$(AWS_PROFILE) uv run gridpulse-agent-eval
