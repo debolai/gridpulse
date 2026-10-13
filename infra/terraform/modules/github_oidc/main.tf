@@ -16,6 +16,8 @@ locals {
   account  = data.aws_caller_identity.current.account_id
   ci_dbs   = "arn:aws:glue:${var.region}:${local.account}:database/ci_pr_*"
   ci_table = "arn:aws:glue:${var.region}:${local.account}:table/ci_pr_*/*"
+  # Deleting a database also deletes its functions, so Glue checks those resources too.
+  ci_udf = "arn:aws:glue:${var.region}:${local.account}:userDefinedFunction/ci_pr_*/*"
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -104,6 +106,7 @@ data "aws_iam_policy_document" "ci" {
       "arn:aws:glue:${var.region}:${local.account}:catalog",
       local.ci_dbs,
       local.ci_table,
+      local.ci_udf,
     ]
   }
   statement {
