@@ -21,8 +21,8 @@ variable "monthly_budget_usd" {
   default     = 50
 }
 
-variable "github_repository" {
-  description = "GitHub repository (owner/name) whose Actions may assume the CI and deploy roles."
+variable "github_subject_prefix" {
+  description = "OIDC subject prefix of the GitHub repository whose Actions may assume the CI and deploy roles (immutable IDs: debolai/gridpulse)."
   type        = string
-  default     = "debolai/gridpulse"
+  default     = "repo:debolai@56473006/gridpulse@1415852523"
 }

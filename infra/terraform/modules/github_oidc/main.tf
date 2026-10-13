@@ -34,7 +34,7 @@ data "aws_iam_policy_document" "ci_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.repository}:pull_request"]
+      values   = ["${var.subject_prefix}:pull_request"]
     }
   }
 }

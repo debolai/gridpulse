@@ -30,7 +30,7 @@ module "github_oidc" {
   source                = "../../../modules/github_oidc"
   env                   = var.env
   region                = var.region
-  repository            = var.github_repository
+  subject_prefix        = var.github_subject_prefix
   lake_bucket           = module.lake.bucket_names["lake"]
   athena_results_bucket = module.lake.bucket_names["athena_results"]
   athena_workgroup      = "gridpulse-${var.env}"

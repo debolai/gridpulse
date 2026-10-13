@@ -8,8 +8,13 @@ variable "region" {
   type        = string
 }
 
-variable "repository" {
-  description = "GitHub repository allowed to assume the roles, as owner/name."
+variable "subject_prefix" {
+  description = <<-EOT
+    Start of the OIDC `sub` claim GitHub sends for this repository. This repository uses
+    GitHub's immutable form, repo:<owner>@<owner id>/<repo>@<repo id> (see
+    `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`), so a renamed or re-created
+    repository with the same name can't assume the roles.
+  EOT
   type        = string
 }
 
