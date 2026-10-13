@@ -1,7 +1,8 @@
 """A4 check: every metric served by the semantic API equals an independently written SQL query
 on a fixed window. A metric can be valid YAML and still compute the wrong thing; this catches it.
 
-Needs the local lake with the sample loaded and `make dbt-build` run (marts + semantic manifest).
+Needs the local lake with data for 2026-09-28..2026-10-13 (the committed CI sample is exactly
+that: `make ci-sample-load`) and `make dbt-build` + `make semantic-manifest` run.
 Metrics leave out values flagged suspect or invalid by default, so the reference queries apply
 the same rule from the quality-status columns; the sample has no flagged values, so
 test_flagged_values_are_left_out plants one.
@@ -16,10 +17,10 @@ from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
 
-START = datetime(2026, 9, 1, tzinfo=UTC)
-END = datetime(2026, 10, 1, tzinfo=UTC)
+START = datetime(2026, 10, 1, tzinfo=UTC)
+END = datetime(2026, 10, 13, tzinfo=UTC)
 WINDOW_SQL = (
-    "period_utc >= TIMESTAMP '2026-09-01 00:00:00' AND period_utc < TIMESTAMP '2026-10-01 00:00:00'"
+    "period_utc >= TIMESTAMP '2026-10-01 00:00:00' AND period_utc < TIMESTAMP '2026-10-13 00:00:00'"
 )
 
 
@@ -286,10 +287,10 @@ def test_demand_month_to_date_shows_end_of_day_running_total(api, sql):
                       ORDER BY cast(period_utc AS date)) AS mtd
              FROM marts.fct_grid_hourly
              WHERE ba_code = 'PJM' AND demand_quality_status = 'ok'
-               AND period_utc >= TIMESTAMP '2026-08-01 00:00:00'
-               AND period_utc < TIMESTAMP '2026-09-04 00:00:00'
+               AND period_utc >= TIMESTAMP '2026-09-01 00:00:00'
+               AND period_utc < TIMESTAMP '2026-10-04 00:00:00'
              GROUP BY 1)
-           WHERE day_utc >= DATE '2026-08-29'"""
+           WHERE day_utc >= DATE '2026-09-28'"""
     )
     resp = api.post(
         "/query",
@@ -297,8 +298,8 @@ def test_demand_month_to_date_shows_end_of_day_running_total(api, sql):
             "metrics": ["demand_month_to_date"],
             "group_by": ["metric_time__day"],
             "filters": [{"dimension": "balancing_authority", "values": ["PJM"]}],
-            "start": "2026-08-29T00:00:00Z",
-            "end": "2026-09-04T00:00:00Z",
+            "start": "2026-09-28T00:00:00Z",
+            "end": "2026-10-04T00:00:00Z",
         },
     )
     assert resp.status_code == 200, resp.text
@@ -363,7 +364,7 @@ def test_results_say_what_was_left_out(api):
     assert len(notes) == 1 and "flagged" in notes[0]  # net_imports has no quality note
 
 
-SPIKE_KEY = "ba_code = 'PJM' AND period_utc = TIMESTAMP '2026-09-15 18:00:00'"
+SPIKE_KEY = "ba_code = 'PJM' AND period_utc = TIMESTAMP '2026-10-08 18:00:00'"
 
 
 def test_flagged_values_are_left_out(api, cursor, sql):

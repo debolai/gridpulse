@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws backfill-aws dag-check images \
+	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
@@ -179,6 +179,19 @@ ROUTE ?= region-data
 
 extract: ## Run the extractor, e.g. make extract ARGS="eia --route region-data --start 2026-10-01 --end 2026-10-08"
 	$(COMPOSE) run --rm --build extractor $(ARGS)
+
+# The raw slice CI builds and tests on: 28 Sep - 13 Oct 2026 for the sample BAs (a month
+# boundary for month-to-date, and re-pulled days with real revisions). The semantic ground-truth
+# tests use this window.
+CI_SAMPLE := local/ci-sample
+CI_SAMPLE_WINDOW := --start 2026-09-28 --end 2026-10-13
+
+ci-sample-export: ## Re-export the committed CI sample from the running local lake
+	$(COMPOSE) run --rm --build -v $(CURDIR)/$(CI_SAMPLE):/sample extractor \
+		sample export --dir /sample $(CI_SAMPLE_WINDOW)
+
+ci-sample-load: ## Load the committed CI sample into the running local lake (what CI does)
+	$(COMPOSE) run --rm --build -v $(CURDIR)/$(CI_SAMPLE):/sample:ro extractor sample load --dir /sample
 
 extract-sample: ## Load one route for the sample BAs: make extract-sample START=2026-10-01 END=2026-10-08 [ROUTE=fuel-type-data]
 	$(COMPOSE) run --rm --build extractor eia --route $(ROUTE) \

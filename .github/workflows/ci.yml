@@ -35,6 +35,35 @@ jobs:
       - name: MetricFlow validate (semantic models and metrics; warehouse checks run locally)
         run: cd transform && DBT_PROFILES_DIR=. uv run mf validate-configs --skip-dw
 
+  # The whole data stack on real data, no AWS: the local lake (SeaweedFS, Lakekeeper, Trino,
+  # Postgres) from compose, loaded with the committed raw sample (28 Sep - 13 Oct 2026, the six
+  # sample BAs). Catches SQL that parses but fails when run, and wrong numbers.
+  local-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Start the local lake
+        run: make up-lake
+      - name: Load the committed raw sample (through the extractor's own sink)
+        run: make ci-sample-load
+      - name: dbt build, then again (the second run takes the incremental paths)
+        run: make dbt-build && make dbt-build
+      - name: MetricFlow validate, including the warehouse checks
+        run: make semantic-manifest && make mf ARGS=validate-configs
+      - name: Integration tests (every metric vs hand-written SQL, dbt into test schemas, agent memory)
+        run: make test-integration
+      - name: Trino and Lakekeeper logs
+        if: failure()
+        run: docker compose -f local/compose.yaml --profile lake logs --tail 200 trino lakekeeper
+      - name: Stop the lake
+        if: always()
+        run: make down
+
   images:
     runs-on: ubuntu-latest
     timeout-minutes: 30

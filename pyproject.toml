@@ -13,6 +13,7 @@ dev = [
     "gridpulse-semantic",
     "httpx",
     "pre-commit",
+    "pyiceberg[sql-sqlite]",  # an in-process Iceberg catalog for ingestion unit tests
     "pytest",
     "respx",
     "trino",

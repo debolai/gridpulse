@@ -12,7 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GRIDPULSE_", env_file=".env", extra="ignore")
 
-    eia_api_key: SecretStr = Field(validation_alias="EIA_API_KEY")
+    # Only `eia` needs it (it refuses to start without); `noaa`, `manifests` and `sample` don't.
+    eia_api_key: SecretStr | None = Field(default=None, validation_alias="EIA_API_KEY")
     eia_base_url: str = "https://api.eia.gov/v2"
     eia_page_size: int = Field(default=5000, ge=1, le=5000)
     eia_requests_per_second: float = Field(default=1.0, gt=0)
