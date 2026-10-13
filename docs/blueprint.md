@@ -311,7 +311,7 @@ Airflow 3 runs seven DAGs on Kubernetes; ingestion DAGs publish Airflow Assets, 
 | `noaa_daily` | Daily 06:00 UTC | Loads the previous day's weather observations; publishes `raw_noaa` |
 | `dbt_build` | On `raw_eia` or `raw_noaa` update | Source freshness check, `dbt build` through Cosmos, semantic API cache refresh, Elementary report |
 | `lake_maintenance` | Weekly, Sunday | Iceberg `OPTIMIZE` and `VACUUM` on raw and mart tables |
-| `dbt_full_refresh_check` | Monthly | Rebuilds marts in a scratch database and compares them to production to prove incremental logic is correct |
+| `dbt_full_refresh_check` | Monthly | Rebuilds marts in a scratch database and compares them to production to prove incremental logic is correct (rows older than the 30-day revision window + 2 days, which ingestion can no longer change) |
 | `agent_eval_nightly` | Daily 07:00 UTC | Runs the full agent evaluation against the live semantic API and stores scores |
 
 **Decision: anchor every extraction window to the run's data interval, not to "now."** Why: a run for 10:00 always pulls the same 72 hours whether it runs on time or a month later. That makes reruns reproducible and lets Airflow's built-in backfill rebuild any historical range correctly.
@@ -547,3 +547,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-13 — Revision audit covers all three EIA routes (item = series, fuel or neighbour BA), with revision_type changed/filled/removed and hours_after_period.
 - 2026-10-13 — Weather source: NOAA GHCNh replaces ISD (ISD stopped updating in August 2025; ADR-0004). Seed `ba_weather_stations` covers the six sample BAs with Census Vintage 2025 metro populations; temperature joins `fct_grid_hourly` and fills in on a later run when NOAA publishes.
 - 2026-10-13 — `dim_balancing_authority` is built from `snap_ba_reference` (SCD2). Run manifests are also appended to `raw.ingestion_runs` (best effort; `gridpulse-extract manifests` backfills from S3) so dbt can build `fct_ingestion_runs` without reading JSON from S3.
+- 2026-10-13 — B2 slice 1: all seven DAGs share one task factory; `GRIDPULSE_TASK_RUNTIME` picks DockerOperator (compose) or KubernetesPodOperator (k3d, EKS), and Kubernetes task env comes from per-component ConfigMaps/Secrets rather than DAG code. Cosmos renders `dbt_build` from the manifest baked into the Airflow image (one `dbt build --select <node>` task per node, unit tests left to CI). Lake maintenance and the full-refresh comparison are dbt macros (`adapter.dispatch` for Trino vs Athena). Assets renamed `raw_eia`/`raw_noaa`. Elementary moved to B6.

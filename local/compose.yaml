@@ -159,13 +159,11 @@ services:
         condition: service_healthy
 
   # Airflow 3 in one container (`airflow standalone`: api-server, scheduler, dag-processor,
-  # triggerer) with LocalExecutor. Tasks run as sibling containers through the Docker socket.
-  # Full Helm deployment with KubernetesExecutor comes in phase B2.
+  # triggerer) with LocalExecutor. Tasks run as sibling containers through the Docker socket
+  # (GRIDPULSE_TASK_RUNTIME=docker). The Kubernetes deployment (k3d, EKS) uses the Helm chart.
+  # Build it with `make images` (it copies the dbt manifest from the transform image).
   airflow:
     profiles: [orch]
-    build:
-      context: ..
-      dockerfile: orchestration/Dockerfile
     image: gridpulse/orchestration:local
     labels: *labels
     env_file:
@@ -178,19 +176,26 @@ services:
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
       # Local only: no login screen. The EKS deployment uses real auth.
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      GRIDPULSE_TASK_RUNTIME: docker
       GRIDPULSE_DOCKER_NETWORK: gridpulse_default
-      GRIDPULSE_SEMANTIC_API_URL: http://semantic-api:8090
+      # The semantic API runs on the host during local development (`make semantic-api`).
+      GRIDPULSE_SEMANTIC_API_URL: http://host.docker.internal:8090
+    extra_hosts:
+      - host.docker.internal:host-gateway
     command:
       - bash
       - -c
       - |
         export AIRFLOW_VAR_EIA_API_KEY="$${EIA_API_KEY:-}"
+        export AIRFLOW_VAR_OPENAI_API_KEY="$${GRIDPULSE_AGENT_OPENAI_API_KEY:-}"
+        export AIRFLOW_VAR_AGENT_PROVIDER="$${GRIDPULSE_AGENT_PROVIDER:-bedrock}"
         airflow db migrate >/dev/null &&
         airflow pools set eia_api 2 "EIA API: at most 2 concurrent extract tasks" >/dev/null &&
         exec airflow standalone
     volumes:
       - ../orchestration/dags:/opt/airflow/dags
       - ../orchestration/tests:/opt/airflow/tests
+      - ../transform/seeds/ba_weather_stations.csv:/opt/airflow/dbt/ba_weather_stations.csv:ro
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8088:8080"

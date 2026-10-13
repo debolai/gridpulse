@@ -73,13 +73,18 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 
 up: up-orch ## Start everything built so far
 
-images: ## Build the local task images Airflow launches (extractor, dbt)
+images: ## Build the local images: the tasks Airflow launches (extractor, dbt, agent) and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
 	docker build -q -f transform/Dockerfile -t gridpulse/transform:local . >/dev/null
-	@echo "built gridpulse/ingestion:local gridpulse/transform:local"
+	docker build -q -f agent/Dockerfile -t gridpulse/agent:local . >/dev/null
+	docker build -q -f orchestration/Dockerfile -t gridpulse/orchestration:local . >/dev/null
+	@echo "built gridpulse/{ingestion,transform,agent,orchestration}:local"
 
-dag-check: ## DAG integrity: imports, no catchup, retries, timeouts, EIA pool
-	$(COMPOSE) --profile orch run --rm --no-deps --entrypoint python airflow /opt/airflow/tests/dag_integrity.py
+dag-check: ## DAG integrity on both runtimes: imports, no catchup, retries, timeouts, EIA pool
+	@for rt in docker kubernetes; do \
+	  $(COMPOSE) --profile orch run --rm --no-deps -e GRIDPULSE_TASK_RUNTIME=$$rt \
+	    --entrypoint python airflow /opt/airflow/tests/dag_integrity.py || exit 1; \
+	done
 
 down: ## Stop all containers, keep data
 	$(COMPOSE) --profile '*' down
