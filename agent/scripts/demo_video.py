@@ -10,6 +10,8 @@ Each scene carries a caption, since the video has no sound.
 import subprocess
 import sys
 import tempfile
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import imageio_ffmpeg
@@ -36,8 +38,9 @@ CAPTION_JS = """text => {
   el.textContent = text;
 }"""
 
-TITLE = """<html><body style="margin:0;height:100vh;display:flex;align-items:center;
-justify-content:center;background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif">
+TITLE = """<html style="background:#0d1117">
+<body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif">
 <div style="max-width:900px;padding:0 40px">
 <div style="font-size:56px;font-weight:700">⚡ GridPulse</div>
 <div style="font-size:26px;margin-top:16px;color:#9198a1;line-height:1.4">
@@ -67,8 +70,14 @@ def ask(page: Page, question: str, done: str, hold_ms: int) -> None:
     page.wait_for_timeout(hold_ms)
 
 
-def tour(page: Page) -> None:
-    page.set_content(TITLE)
+def tour(page: Page, title: Path, mark_start: Callable[[], None]) -> None:
+    page.goto(title.as_uri())
+    page.wait_for_timeout(1000)
+    # Chrome sends the first frames of a new page at the wrong size; a reload fixes it, and
+    # main() cuts the video at this point.
+    page.reload()
+    page.wait_for_timeout(300)
+    mark_start()
     page.wait_for_timeout(6000)
 
     page.goto(f"{AIRFLOW}/dags")
@@ -76,8 +85,9 @@ def tour(page: Page) -> None:
     caption(page, "Airflow 3 schedules hourly EIA and daily NOAA loads, dbt builds and checks")
     page.wait_for_timeout(5000)
     page.goto(f"{AIRFLOW}/dags/dbt_build")
-    page.get_by_text("Last 6 Dag Runs").wait_for(timeout=30_000)
-    page.get_by_role("button", name="Graph").first.click()
+    graph = page.get_by_role("button", name="Graph").first
+    graph.wait_for(timeout=30_000)
+    graph.click()
     page.wait_for_timeout(2000)
     page.get_by_text("+ 35 Tasks").click()  # expand the dbt task group
     page.wait_for_timeout(1500)
@@ -140,15 +150,19 @@ def main() -> None:
             viewport=SIZE, record_video_dir=tmp, record_video_size=SIZE, color_scheme="light"
         )
         page = context.new_page()
+        started, cut = time.monotonic(), []
+        title = Path(tmp) / "title.html"
+        title.write_text(TITLE, encoding="utf-8")
         try:
-            tour(page)
+            tour(page, title, lambda: cut.append(time.monotonic() - started))
         finally:
             context.close()  # writes the WebM
             browser.close()
         webm = page.video.path()
         OUT.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", str(webm),
+            [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
+             "-ss", f"{cut[0]:.2f}", "-i", str(webm),
              "-c:v", "libx264", "-preset", "slow", "-crf", "30", "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", "-an", str(OUT)],
             check=True,
