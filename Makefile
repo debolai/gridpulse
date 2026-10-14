@@ -8,7 +8,7 @@ COMPOSE := docker compose -f local/compose.yaml
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report docs-site \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
-	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif demo-video
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -268,12 +268,13 @@ elementary-report: ## Elementary report (test results, run history) -> transform
 		--file-path target/elementary/index.html --open-browser false
 	@echo "open transform/target/elementary/index.html"
 
-docs-site: ## Static docs site (dbt docs + Elementary report) -> site/, from the running local lake (what CD publishes)
+docs-site: ## Static docs site (dbt docs + Elementary report + demo video) -> site/, from the running local lake (what CD publishes)
 	$(DBT) docs generate --static
 	$(MAKE) elementary-report
 	rm -rf site && mkdir -p site/dbt site/elementary
 	cp transform/target/static_index.html site/dbt/index.html
 	cp transform/target/elementary/index.html site/elementary/index.html
+	cp docs/assets/demo.mp4 site/demo.mp4
 	sed "s/__COMMIT__/$$(git rev-parse --short=12 HEAD)/" docs/site/index.html > site/index.html
 	@echo "open site/index.html"
 
@@ -355,6 +356,10 @@ agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 
 demo-gif: ## Record docs/assets/demo.gif from the running UI (needs lake, semantic-api, agent-api, agent-ui)
 	uv run --quiet --with playwright==1.63.0 python agent/scripts/demo_gif.py
+
+demo-video: ## Record docs/assets/demo.mp4, the two-minute tour (needs up-orch, docs-site, semantic-api, agent-api, agent-ui)
+	uv run --quiet --with playwright==1.63.0 playwright install ffmpeg  # Playwright's recorder, once
+	uv run --quiet --with playwright==1.63.0 --with imageio-ffmpeg==0.6.0 python agent/scripts/demo_video.py
 
 agent-eval: ## Score the planner on the golden question set (fails below 90%; scores to Postgres)
 	AWS_PROFILE=$(AWS_PROFILE) GRIDPULSE_AGENT_CHECKPOINT_DSN=$(AGENT_CHECKPOINT_DSN) \

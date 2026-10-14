@@ -30,14 +30,15 @@ def main() -> None:
         browser = p.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1280, "height": 860})
         page.goto(UI)
-        box = page.get_by_label("Ask about U.S. grid demand, forecasts or data quality")
+        box = page.get_by_placeholder("Ask about U.S. grid data, or answer my question")
         box.wait_for(timeout=60_000)
         snap(page, 1500)
         for i in range(0, len(QUESTION), 6):  # typing, a few characters per frame
             box.fill(QUESTION[: i + 6])
             snap(page, 120)
         box.press("Enter")
-        page.get_by_text("Planning a metric request").wait_for(timeout=10_000)
+        page.locator("[data-testid='stChatMessage']").nth(1).wait_for(timeout=10_000)  # reply
+        page.wait_for_timeout(800)  # a progress label or two
         snap(page, 1200)
         page.get_by_text("numbers verified").wait_for(timeout=180_000)
         page.wait_for_timeout(1500)  # let the chart finish drawing
