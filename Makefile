@@ -253,6 +253,7 @@ tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reas
 	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet
 
 elementary-report: ## Elementary report (test results, run history) -> transform/target/elementary/index.html (DBT_TARGET=aws for Athena)
+	mkdir -p transform/target/elementary  # edr doesn't create it
 	cd transform && AWS_PROFILE=$(AWS_PROFILE) uv run --quiet edr report --project-dir . --profiles-dir . \
 		--config-dir edr --target-path $(CURDIR)/transform/target/edr \
 		--profile-target $${DBT_TARGET:-local} --project-name gridpulse --disable-samples true \
