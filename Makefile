@@ -5,7 +5,7 @@ COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
-	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
+	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
 	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif
@@ -251,6 +251,13 @@ helm-lint: ## Lint the gridpulse chart and validate its rendered manifests again
 tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reasons: infra/terraform/.checkov.yaml)
 	$(TFLINT) --recursive
 	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet
+
+elementary-report: ## Elementary report (test results, run history) -> transform/target/elementary/index.html (DBT_TARGET=aws for Athena)
+	cd transform && AWS_PROFILE=$(AWS_PROFILE) uv run --quiet edr report --project-dir . --profiles-dir . \
+		--config-dir edr --target-path $(CURDIR)/transform/target/edr \
+		--profile-target $${DBT_TARGET:-local} --project-name gridpulse --disable-samples true \
+		--file-path target/elementary/index.html --open-browser false
+	@echo "open transform/target/elementary/index.html"
 
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'

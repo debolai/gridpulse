@@ -1,0 +1,2 @@
+# Elementary CLI (edr) settings, passed with --config-dir. No usage data sent to Elementary.
+anonymous_usage_tracking: false
