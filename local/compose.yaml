@@ -194,6 +194,18 @@ services:
         export AIRFLOW_VAR_AGENT_PROVIDER="$${GRIDPULSE_AGENT_PROVIDER:-bedrock}"
         airflow db migrate >/dev/null &&
         airflow pools set eia_api 2 "EIA API: at most 2 concurrent extract tasks" >/dev/null &&
+        # A keyless clone (`make up` on the committed sample) shouldn't fail every hour: pause
+        # the DAGs whose key is missing before the scheduler starts. Unpause them in the UI
+        # after adding the key to .env.
+        airflow dags reserialize >/dev/null 2>&1 &&
+        if [ -z "$${EIA_API_KEY:-}" ]; then
+          airflow dags pause eia_hourly >/dev/null && airflow dags pause eia_daily_sweep >/dev/null &&
+          echo "No EIA_API_KEY in .env: paused eia_hourly and eia_daily_sweep"
+        fi &&
+        if [ -z "$${GRIDPULSE_AGENT_PROVIDER:-}" ]; then
+          airflow dags pause agent_eval_nightly >/dev/null &&
+          echo "No GRIDPULSE_AGENT_PROVIDER in .env: paused agent_eval_nightly"
+        fi &&
         exec airflow standalone
     volumes:
       - ../orchestration/dags:/opt/airflow/dags

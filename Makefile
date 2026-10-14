@@ -4,7 +4,7 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
+	up-lake up-orch up demo-data down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
 	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report docs-site \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
@@ -76,7 +76,15 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 	$(COMPOSE) --profile lake --profile orch up -d --wait
 	@echo "Airflow: http://localhost:8088   Trino: http://localhost:8080"
 
-up: up-orch ## Start everything built so far
+up: up-orch ## Fresh clone to working stack: lake + Airflow, sample data if the lake is empty (DAGs missing a key start paused)
+	@$(MAKE) --no-print-directory demo-data
+	@echo "Ready. Airflow: http://localhost:8088 (no login locally)  Trino: http://localhost:8080  Next: make semantic-api"
+
+demo-data: ## Empty lake only: load the committed sample (28 Sep-13 Oct 2026, six BAs) and build the marts. No API key needed
+	@if [ -z "$$($(COMPOSE) exec -T trino trino --execute "SHOW SCHEMAS FROM lake LIKE 'raw%'" 2>/dev/null)" ]; then \
+	  echo "Empty lake: loading the committed sample and building the marts (a few minutes)"; \
+	  $(MAKE) --no-print-directory ci-sample-load && $(MAKE) --no-print-directory dbt-build; \
+	else echo "The lake already has raw data: sample not loaded"; fi
 
 images: ## Build the local images: extractor, dbt, semantic API, agent and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
