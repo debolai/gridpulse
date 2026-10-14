@@ -4,11 +4,11 @@ SHELL := /bin/bash
 COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
-	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
-	dbt-deps dbt-build dbt-test dbt-docs dbt-drop \
+	up-lake up-orch up demo-data down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
+	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report docs-site \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
-	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif
+	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif demo-video
 
 help: ## List available commands
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -76,7 +76,15 @@ up-orch: images ## Start the lake plus Airflow (UI: http://localhost:8088), ~5 G
 	$(COMPOSE) --profile lake --profile orch up -d --wait
 	@echo "Airflow: http://localhost:8088   Trino: http://localhost:8080"
 
-up: up-orch ## Start everything built so far
+up: up-orch ## Fresh clone to working stack: lake + Airflow, sample data if the lake is empty (DAGs missing a key start paused)
+	@$(MAKE) --no-print-directory demo-data
+	@echo "Ready. Airflow: http://localhost:8088 (no login locally)  Trino: http://localhost:8080  Next: make semantic-api"
+
+demo-data: ## Empty lake only: load the committed sample (28 Sep-13 Oct 2026, six BAs) and build the marts. No API key needed
+	@if [ -z "$$($(COMPOSE) exec -T trino trino --execute "SHOW SCHEMAS FROM lake LIKE 'raw%'" 2>/dev/null)" ]; then \
+	  echo "Empty lake: loading the committed sample and building the marts (a few minutes)"; \
+	  $(MAKE) --no-print-directory ci-sample-load && $(MAKE) --no-print-directory dbt-build; \
+	else echo "The lake already has raw data: sample not loaded"; fi
 
 images: ## Build the local images: extractor, dbt, semantic API, agent and Airflow
 	docker build -q -f ingestion/Dockerfile -t gridpulse/ingestion:local . >/dev/null
@@ -252,6 +260,24 @@ tf-lint: ## Lint Terraform: tflint, and checkov security checks (skips with reas
 	$(TFLINT) --recursive
 	$(CHECKOV) -d /tf --config-file /tf/.checkov.yaml --compact --quiet
 
+elementary-report: ## Elementary report (test results, run history) -> transform/target/elementary/index.html (DBT_TARGET=aws for Athena)
+	mkdir -p transform/target/elementary  # edr doesn't create it
+	cd transform && AWS_PROFILE=$(AWS_PROFILE) uv run --quiet edr report --project-dir . --profiles-dir . \
+		--config-dir edr --target-path $(CURDIR)/transform/target/edr \
+		--profile-target $${DBT_TARGET:-local} --project-name gridpulse --disable-samples true \
+		--file-path target/elementary/index.html --open-browser false
+	@echo "open transform/target/elementary/index.html"
+
+docs-site: ## Static docs site (dbt docs + Elementary report + demo video) -> site/, from the running local lake (what CD publishes)
+	$(DBT) docs generate --static
+	$(MAKE) elementary-report
+	rm -rf site && mkdir -p site/dbt site/elementary
+	cp transform/target/static_index.html site/dbt/index.html
+	cp transform/target/elementary/index.html site/elementary/index.html
+	cp docs/assets/demo.mp4 site/demo.mp4
+	sed "s/__COMMIT__/$$(git rev-parse --short=12 HEAD)/" docs/site/index.html > site/index.html
+	@echo "open site/index.html"
+
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'
 
@@ -330,6 +356,10 @@ agent-ui: ## Open the Streamlit demo UI (talks to agent-api)
 
 demo-gif: ## Record docs/assets/demo.gif from the running UI (needs lake, semantic-api, agent-api, agent-ui)
 	uv run --quiet --with playwright==1.63.0 python agent/scripts/demo_gif.py
+
+demo-video: ## Record docs/assets/demo.mp4, the two-minute tour (needs up-orch, docs-site, semantic-api, agent-api, agent-ui)
+	uv run --quiet --with playwright==1.63.0 playwright install ffmpeg  # Playwright's recorder, once
+	uv run --quiet --with playwright==1.63.0 --with imageio-ffmpeg==0.6.0 python agent/scripts/demo_video.py
 
 agent-eval: ## Score the planner on the golden question set (fails below 90%; scores to Postgres)
 	AWS_PROFILE=$(AWS_PROFILE) GRIDPULSE_AGENT_CHECKPOINT_DSN=$(AGENT_CHECKPOINT_DSN) \

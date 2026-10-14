@@ -5,6 +5,9 @@ Cosmos renders each dbt node as its own task from the manifest baked into the Ai
 `dbt build --select <model>` runs a model and its data tests together, so a failed model
 retries alone and the graph shows dbt lineage. Sources with a freshness rule get a
 `dbt source freshness` task upstream of their models. Unit tests run in CI, not on the schedule.
+Elementary's package hook records every task's run and test results; its own models are built
+once at setup (`make dbt-build`), so they are left out of the graph here. After the build, the
+Elementary report (test history, freshness, run times) is written to the lake bucket.
 """
 
 import json
@@ -18,6 +21,8 @@ from _gridpulse import (
     RAW_EIA,
     RAW_NOAA,
     SEMANTIC_API_URL,
+    TRANSFORM_IMAGE,
+    container_task,
     cosmos_execution,
 )
 from airflow.sdk import DAG, task
@@ -48,6 +53,7 @@ with DAG(
             load_method=LoadMode.DBT_MANIFEST,
             test_behavior=TestBehavior.BUILD,
             source_rendering_behavior=SourceRenderingBehavior.WITH_TESTS_OR_FRESHNESS,
+            exclude=["package:elementary"],
         ),
         operator_args={
             **operator_args,
@@ -71,4 +77,14 @@ with DAG(
         log.info("semantic cache refreshed: %s", version)
         return version
 
-    dbt >> refresh_semantic_cache()
+    elementary_report = container_task(
+        task_id="elementary_report",
+        component="dbt",
+        image=TRANSFORM_IMAGE,
+        entrypoint=["/app/transform/scripts/elementary-report.sh"],
+        arguments=[],
+        # A report problem shouldn't hide fresh data: run whatever the build's outcome.
+        trigger_rule="all_done",
+    )
+
+    dbt >> [refresh_semantic_cache(), elementary_report]

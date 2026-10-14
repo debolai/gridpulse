@@ -28,6 +28,7 @@ transform = [
     "dbt-trino",
     "dbt-athena",
     "dbt-metricflow[dbt-trino,dbt-athena]",
+    "elementary-data==0.26.1",
 ]
 
 [tool.uv]

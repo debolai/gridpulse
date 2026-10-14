@@ -59,6 +59,21 @@ snapshots:
     +table_type: iceberg
 
 models:
+  # Elementary's own tables (run results, test results, model history) in their own schema.
+  elementary:
+    +schema: elementary
+    +table_type: iceberg
+    # Athena views stored in Glue can't hold timestamp(6) columns, which these three views
+    # declare; on Athena they are Iceberg tables instead (Trino keeps them as views).
+    edr:
+      run_results:
+        job_run_results:
+          +materialized: "{{ 'table' if target.type == 'athena' else 'view' }}"
+      alerts:
+        alerts_dbt_models:
+          +materialized: "{{ 'table' if target.type == 'athena' else 'view' }}"
+        alerts_dbt_source_freshness:
+          +materialized: "{{ 'table' if target.type == 'athena' else 'view' }}"
   gridpulse:
     # Athena: every table is Iceberg (Trino's catalog is Iceberg-only, so it ignores this).
     +table_type: iceberg

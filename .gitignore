@@ -40,3 +40,9 @@ transform/.user.yml
 
 # Terraform variables can hold personal details (emails); commit *.tfvars.example instead
 terraform.tfvars
+
+# Elementary CLI (edr) logs and intermediate output, written where it runs
+edr_target/
+
+# Docs site build output (make docs-site)
+/site/

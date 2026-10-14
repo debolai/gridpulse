@@ -6,6 +6,8 @@ name: cd
 # 2. deploy (`production` environment: waits for the owner's approval): terraform apply of the
 #    foundation stack; then, only if the demo cluster is up, helm upgrade + smoke test, rolling
 #    back on failure. With the demo down it says so; the next `make aws-up` deploys this SHA.
+# 3. docs (no approval, no AWS): dbt docs + Elementary report built from the committed raw sample
+#    on the local engine (the same build as CI's local-engine job), published to GitHub Pages.
 
 on:
   push:
@@ -109,3 +111,41 @@ jobs:
           fi
           infra/scripts/deploy.sh "$TAG"
           echo "### Deploy: \`$TAG\` is live and passed the smoke test" >> "$GITHUB_STEP_SUMMARY"
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Start the local lake and load the committed raw sample
+        run: make up-lake && make ci-sample-load
+      - name: dbt build twice (Elementary's run history then shows a full and an incremental run)
+        run: make dbt-build && make dbt-build
+      - name: Build the site (dbt docs + Elementary report)
+        run: make docs-site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Stop the lake
+        if: always()
+        run: make down
+
+  pages:
+    needs: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

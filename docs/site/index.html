@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GridPulse docs</title>
+  <style>
+    :root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --link: #0969da; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --link: #4493f8; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--fg);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 44rem; margin: 0 auto; padding: 3rem 1rem; }
+    h1 { margin: 0 0 .25rem; font-size: 1.75rem; }
+    p { color: var(--muted); margin: 0 0 2rem; }
+    a { color: var(--link); }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { border-top: 1px solid var(--line); padding: 1rem 0; }
+    li a { font-weight: 600; font-size: 1.1rem; text-decoration: none; }
+    li span { display: block; color: var(--muted); }
+    video { width: 100%; border: 1px solid var(--line); border-radius: 8px; margin: 0 0 1.5rem; }
+    footer { margin-top: 2rem; color: var(--muted); font-size: .875rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>GridPulse docs</h1>
+  <p>Built by CI from the committed raw sample (six balancing authorities, 28 Sep to 13 Oct 2026)
+    on the local engine (Trino + Iceberg), at every merge to <code>main</code>.</p>
+  <video src="demo.mp4" controls preload="metadata" playsinline
+    aria-label="Two-minute tour: Airflow, the assistant answering and asking a clarifying question, dbt lineage, Elementary"></video>
+  <ul>
+    <li><a href="dbt/">dbt docs</a>
+      <span>Models, columns, tests, contracts, lineage from EIA sources to the marts, and the
+        exposures (semantic API, agent) that read them.</span></li>
+    <li><a href="elementary/">Elementary report</a>
+      <span>Test results and run history from the two CI builds of that sample.</span></li>
+  </ul>
+  <footer>Source: <a href="https://github.com/debolai/gridpulse">github.com/debolai/gridpulse</a>
+    · built from commit <code>__COMMIT__</code></footer>
+</main>
+</body>
+</html>

@@ -67,7 +67,17 @@ DOCKER_ENV = {
         # contains "api_key", so Airflow masks it in the UI and logs.
         "EIA_API_KEY": "{{ var.value.eia_api_key }}",
     },
-    "dbt": {"DBT_TARGET": "local", "TRINO_HOST": "trino", "TRINO_PORT": "8080"},
+    "dbt": {
+        "DBT_TARGET": "local",
+        "TRINO_HOST": "trino",
+        "TRINO_PORT": "8080",
+        # The Elementary report task uploads its HTML here (local dummy credentials).
+        "GRIDPULSE_REPORTS_BUCKET": "gridpulse-local-lake",
+        "GRIDPULSE_S3_ENDPOINT": "http://seaweedfs:8333",
+        "GRIDPULSE_S3_ACCESS_KEY": "gridpulse-local",
+        "GRIDPULSE_S3_SECRET_KEY": "gridpulse-local-secret",
+        "GRIDPULSE_S3_REGION": "local-01",
+    },
     "agent": {
         "GRIDPULSE_AGENT_SEMANTIC_API_URL": SEMANTIC_API_URL,
         # Temporary (ADR-0003): locally the provider and key come from .env (OpenAI for now).
