@@ -391,7 +391,7 @@ gridpulse/
 | Workflow | Trigger | Steps |
 | --- | --- | --- |
 | `ci.yml` | Pull request | Lint (`ruff`, `sqlfluff`, `yamllint`, `hadolint`); `pytest` for ingestion, agent, and DAG integrity; dbt slim CI build into `ci_pr_<n>`; Terraform `fmt`, `validate`, `tflint`, `checkov`, and `plan` posted as a PR comment; Docker builds; agent evals when `agent/` or `semantic/` changed (2026-10-13: on Bedrock through the CI role; skipped until TODO #11 lifts the quota, so no API key is stored in GitHub) |
-| `cd.yml` | Merge to `main` | Build and push images tagged by SHA; `terraform apply` behind a GitHub environment that requires approval; `helm upgrade` with a smoke test and rollback when the demo cluster is up (ADR-0009: skipped with a notice when it is down); upload the prod dbt manifest to S3; publish dbt docs to GitHub Pages |
+| `cd.yml` | Merge to `main` | Build and push images tagged by SHA; `terraform apply` behind a GitHub environment that requires approval; `helm upgrade` with a smoke test and rollback when the demo cluster is up (ADR-0009: skipped with a notice when it is down); upload the prod dbt manifest to S3; publish dbt docs and the Elementary report (built from the committed CI sample on the local engine) to GitHub Pages |
 | `pr-cleanup.yml` | Pull request closed | Drop the `ci_pr_<n>` Glue databases and their S3 data |
 | `nightly.yml` | Daily | Dependency and image vulnerability scans |
 
@@ -571,3 +571,4 @@ Re-pull a rolling window and merge on (ba_code, series, period_utc).
 - 2026-10-14 — B5 done. CD was proven against the live demo: an approved merge deployed by SHA, the smoke test passed, and both rollback paths (Helm `--atomic` for pods that never become ready; `helm rollback` when the smoke test fails) put the previous release back. `deploy.sh` passes extra Helm arguments through.
 - 2026-10-14 — B6 slice 1: ADR index (`docs/adr/README.md`), data-issue write-up (`docs/data-issues/eia-aggregate-respondents.md`), cost report (`docs/cost-report.md`).
 - 2026-10-14 — B6 slice 2: Elementary 0.26.1 (dbt package + `edr`) on both engines (three package views are tables on Athena). Every dbt run records results; `dbt_build` adds an `elementary_report` task uploading the HTML report to the lake bucket; `make elementary-report` locally.
+- 2026-10-14 — B6 slice 3: docs site on GitHub Pages (https://debolai.github.io/gridpulse/): dbt docs (static) + Elementary report, built by `cd.yml` from the committed CI sample on the local engine (no AWS access, nothing from the real lake); CI uploads the same site as a PR artifact; `make docs-site` builds it locally.

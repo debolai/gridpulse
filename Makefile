@@ -5,7 +5,7 @@ COMPOSE := docker compose -f local/compose.yaml
 
 .PHONY: help setup lint secrets-staged secrets-history format test test-integration status doctor clean \
 	up-lake up-orch up down ps logs reset prune trino extract extract-sample extract-weather extract-weather-aws ci-sample-export ci-sample-load backfill-aws dag-check images \
-	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report \
+	dbt-deps dbt-build dbt-test dbt-docs dbt-drop elementary-report docs-site \
 	tf-bootstrap tf-init tf-plan tf-apply tf-fmt aws-whoami extract-sample-aws dbt-build-aws \
 	aws-plan aws-up aws-down aws-status aws-ui k3d-up k3d-secrets k3d-ui k3d-status k3d-down alert-test \
 	semantic-manifest semantic-api mf bedrock-check openai-check agent-api agent-ui agent-eval agent-eval-e2e demo-gif
@@ -258,6 +258,15 @@ elementary-report: ## Elementary report (test results, run history) -> transform
 		--profile-target $${DBT_TARGET:-local} --project-name gridpulse --disable-samples true \
 		--file-path target/elementary/index.html --open-browser false
 	@echo "open transform/target/elementary/index.html"
+
+docs-site: ## Static docs site (dbt docs + Elementary report) -> site/, from the running local lake (what CD publishes)
+	$(DBT) docs generate --static
+	$(MAKE) elementary-report
+	rm -rf site && mkdir -p site/dbt site/elementary
+	cp transform/target/static_index.html site/dbt/index.html
+	cp transform/target/elementary/index.html site/elementary/index.html
+	sed "s/__COMMIT__/$$(git rev-parse --short=12 HEAD)/" docs/site/index.html > site/index.html
+	@echo "open site/index.html"
 
 dbt-drop: ## Drop throwaway schemas built with a prefix: make dbt-drop PREFIX=ci_pr_42
 	$(DBT) run-operation drop_prefixed_schemas --args '{prefix: $(PREFIX)}'
