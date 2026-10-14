@@ -38,7 +38,10 @@ services:
       - "5433:5432"
     mem_limit: 512m
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gridpulse -d gridpulse"]
+      # Over TCP, as clients connect: on a fresh volume the image first runs a temporary
+      # socket-only server to initialise, and a socket check passed before TCP clients could
+      # connect (postgres-init then failed in CI).
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U gridpulse -d gridpulse"]
       interval: 2s
       timeout: 5s
       retries: 15
